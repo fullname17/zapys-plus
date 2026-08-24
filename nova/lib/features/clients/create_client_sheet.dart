@@ -11,24 +11,42 @@ import '../../domain/models.dart';
 import '../../ui/kavio_sheet.dart';
 import '../../ui/z.dart';
 
-/// Новий клієнт — v3 bottom sheet. Живе превью зверху: аватар і підпис
-/// збираються просто під час набору, тож видно, як клієнт з'явиться в списку.
-/// Зберігається в Drift (offline-first) → список оновлюється реактивно.
+/// Клієнт — v3 bottom sheet, один і той самий для створення й редагування.
+/// Живе превью зверху: аватар і підпис збираються просто під час набору, тож
+/// видно, як клієнт з'явиться в списку. Зберігається в Drift (offline-first).
 Future<void> showCreateClientSheet(BuildContext context) =>
-    showKavioSheet<void>(context, builder: (_) => const _CreateClientSheet());
+    showKavioSheet<void>(context, builder: (_) => const _ClientSheet());
 
-class _CreateClientSheet extends ConsumerStatefulWidget {
-  const _CreateClientSheet();
+/// Редагування картки клієнта: ім'я, телефон, нотатка, плюс видалення.
+Future<void> showEditClientSheet(BuildContext context, Client client) =>
+    showKavioSheet<void>(context,
+        builder: (_) => _ClientSheet(existing: client));
+
+class _ClientSheet extends ConsumerStatefulWidget {
+  const _ClientSheet({this.existing});
+  final Client? existing;
 
   @override
-  ConsumerState<_CreateClientSheet> createState() => _CreateClientSheetState();
+  ConsumerState<_ClientSheet> createState() => _ClientSheetState();
 }
 
-class _CreateClientSheetState extends ConsumerState<_CreateClientSheet> {
-  final _name = TextEditingController();
-  final _phone = TextEditingController();
-  final _note = TextEditingController();
+class _ClientSheetState extends ConsumerState<_ClientSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _phone;
+  late final TextEditingController _note;
   bool _saving = false;
+
+  Client? get _existing => widget.existing;
+  bool get _isEdit => _existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = _existing;
+    _name = TextEditingController(text: e?.name ?? '');
+    _phone = TextEditingController(text: e?.phone ?? '');
+    _note = TextEditingController(text: e?.note ?? '');
+  }
 
   // Міток тут немає навмисно: «Постійна» і «VIP» продукт виводить із
   // поведінки клієнта (візити й витрати), а не проставляє руками.
@@ -54,25 +72,51 @@ class _CreateClientSheetState extends ConsumerState<_CreateClientSheet> {
     if (!_valid || _saving) return;
     setState(() => _saving = true);
     HapticFeedback.mediumImpact();
-    final messenger = ScaffoldMessenger.of(context);
+    // Тостер беремо до await: контекст листа помре після pop.
+    final toast = zToaster(context);
     final navigator = Navigator.of(context);
 
+    final repo = ref.read(clientsRepositoryProvider);
+    final e = _existing;
     final client = Client(
-      id: 'c${DateTime.now().microsecondsSinceEpoch}',
+      // При редагуванні id незмінний — історія візитів лишається на місці.
+      id: e?.id ?? 'c${DateTime.now().microsecondsSinceEpoch}',
       name: _name.text.trim(),
       phone: _phone.text.trim(),
       note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+      visitsCount: e?.visitsCount ?? 0,
+      totalSpent: e?.totalSpent ?? 0,
     );
-    await ref.read(clientsRepositoryProvider).add(client);
-    await ref
-        .read(analyticsServiceProvider)
-        .track(AnalyticsEvent.clientCreated);
+
+    if (_isEdit) {
+      await repo.update(client);
+    } else {
+      await repo.add(client);
+      await ref
+          .read(analyticsServiceProvider)
+          .track(AnalyticsEvent.clientCreated);
+    }
 
     navigator.pop();
-    messenger.showSnackBar(
-      SnackBar(
-          content: Text(tp('Клієнта {name} додано', {'name': client.name}))),
-    );
+    toast(_isEdit
+        ? tp('Картку {name} збережено', {'name': client.name})
+        : tp('Клієнта {name} додано', {'name': client.name}));
+  }
+
+  /// Видалення забирає й візити клієнта — інакше в календарі лишились би
+  /// записи, які нікуди не ведуть. Тому підтверджуємо окремо.
+  Future<void> _delete() async {
+    final e = _existing!;
+    final confirmed = await showKavioSheet<bool>(context,
+        builder: (c) => _ConfirmDelete(name: e.name));
+    if (confirmed != true || !mounted) return;
+
+    HapticFeedback.mediumImpact();
+    final toast = zToaster(context);
+    final navigator = Navigator.of(context);
+    await ref.read(clientsRepositoryProvider).delete(e.id);
+    navigator.pop();
+    toast(tp('Клієнта {name} видалено', {'name': e.name}));
   }
 
   @override
@@ -82,7 +126,7 @@ class _CreateClientSheetState extends ConsumerState<_CreateClientSheet> {
     Widget reveal(Widget child) => StaggerReveal(index: i++, child: child);
 
     return KavioSheet(
-      title: t('Новий клієнт'),
+      title: _isEdit ? t('Картка клієнта') : t('Новий клієнт'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -162,6 +206,59 @@ class _CreateClientSheetState extends ConsumerState<_CreateClientSheet> {
             icon: Icons.check,
             onTap: _valid && !_saving ? _save : null,
           )),
+          if (_isEdit) ...[
+            const SizedBox(height: 10),
+            reveal(Center(
+              child: TextButton(
+                onPressed: () {
+                  zTap();
+                  _delete();
+                },
+                child: Text(t('Видалити клієнта'),
+                    style: AppTypography.label(k.danger)
+                        .copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            )),
+          ],
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+}
+
+/// Підтвердження видалення клієнта: разом із карткою зникає історія візитів,
+/// і «Повернути» тут уже не допоможе — тому питаємо заздалегідь.
+class _ConfirmDelete extends StatelessWidget {
+  const _ConfirmDelete({required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.kavio;
+    return KavioSheet(
+      title: t('Видалити клієнта?'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            tp('Картка {name} і вся історія візитів зникнуть назавжди.',
+                {'name': name}),
+            style: AppTypography.body(k.ink2).copyWith(fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          ZButton(
+            label: t('Видалити'),
+            icon: Icons.delete_outline,
+            onTap: () => Navigator.of(context).pop(true),
+          ),
+          const SizedBox(height: 10),
+          ZButtonSecondary(
+            label: t('Скасувати'),
+            expand: true,
+            onTap: () => Navigator.of(context).pop(false),
+          ),
           const SizedBox(height: 4),
         ],
       ),

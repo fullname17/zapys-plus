@@ -64,14 +64,16 @@ class HomeScreen extends ConsumerWidget {
                       child: ZStatCard(
                           label: t('Записів'),
                           value: '${d.visits}',
-                          sub: t('до 19:00'))),
+                          // Коли майстер сьогодні звільниться — з останнього
+                          // живого запису, а не зашите «до 19:00».
+                          sub: d.busyUntil == null
+                              ? null
+                              : tp('до {time}',
+                                  {'time': Fmt.time(d.busyUntil!)}))),
                   const SizedBox(width: 10),
                   Expanded(
                       child: ZStatCard(
-                          label: t('Виручка'),
-                          value: Fmt.money(d.revenue),
-                          sub: '▲ 12%',
-                          subColor: k.success)),
+                          label: t('Виручка'), value: Fmt.money(d.revenue))),
                   const SizedBox(width: 10),
                   Expanded(
                       child: ZStatCard(

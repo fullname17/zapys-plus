@@ -12,13 +12,9 @@ import '../../ui/z.dart';
 /// Одна фізика й один вигляд у всіх трьох сценаріях: перенос відчувається так
 /// само, як створення, і не має власних правил зайнятості.
 
-/// Робочий день студії. Слоти йдуть по пів години, останній має вміститися
-/// цілком до закриття.
-const int kOpenHour = 10;
-const int kCloseHour = 20;
-const int kSlotStepMinutes = 30;
-
-/// Вільні початки на [day] під послугу тривалістю [durationMinutes].
+/// Вільні початки на [day] під послугу тривалістю [durationMinutes],
+/// у межах робочого дня майстра ([schedule]): години, вихідні, перерва,
+/// крок сітки.
 ///
 /// [ignoreId] виключає сам запис, який переносимо — інакше він конфліктує
 /// сам із собою, і власний поточний час не показується як вільний.
@@ -27,23 +23,36 @@ List<DateTime> freeSlotsFor({
   required List<Appointment> dayAppointments,
   required DateTime day,
   required int durationMinutes,
+  required Schedule schedule,
   String? ignoreId,
 }) {
-  final close = DateTime(day.year, day.month, day.day, kCloseHour);
+  final wd = schedule.forDate(day);
+  if (!wd.isOpen) return const [];
+
+  DateTime at(int minutes) =>
+      DateTime(day.year, day.month, day.day).add(Duration(minutes: minutes));
+  final open = at(wd.openMinutes);
+  final close = at(wd.closeMinutes);
+  final breakStart = wd.hasBreak ? at(wd.breakStartMinutes!) : null;
+  final breakEnd = wd.hasBreak ? at(wd.breakEndMinutes!) : null;
+
   final busy = dayAppointments
       .where((a) => a.isActive && a.id != ignoreId)
       .toList(growable: false);
 
+  final step = schedule.slotStepMinutes;
   final slots = <DateTime>[];
-  for (var h = kOpenHour; h < kCloseHour; h++) {
-    for (var m = 0; m < 60; m += kSlotStepMinutes) {
-      final start = DateTime(day.year, day.month, day.day, h, m);
-      final end = start.add(Duration(minutes: durationMinutes));
-      if (!end.isBefore(close)) continue;
-      final overlaps =
-          busy.any((a) => start.isBefore(a.end) && end.isAfter(a.start));
-      if (!overlaps) slots.add(start);
+  for (var t = open; !t.isAfter(close); t = t.add(Duration(minutes: step))) {
+    final end = t.add(Duration(minutes: durationMinutes));
+    if (end.isAfter(close)) continue;
+    // Обід: слот не має накладатися на перерву.
+    if (breakStart != null &&
+        t.isBefore(breakEnd!) &&
+        end.isAfter(breakStart)) {
+      continue;
     }
+    final overlaps = busy.any((a) => t.isBefore(a.end) && end.isAfter(a.start));
+    if (!overlaps) slots.add(t);
   }
   return slots;
 }
@@ -61,6 +70,13 @@ bool slotIsFree({
       a.id != ignoreId &&
       start.isBefore(a.end) &&
       end.isAfter(a.start));
+}
+
+/// Хвилини від опівночі → «10:30». Спільний формат для розкладу й перерви.
+String hhmm(int minutes) {
+  final h = (minutes ~/ 60).toString().padLeft(2, '0');
+  final m = (minutes % 60).toString().padLeft(2, '0');
+  return '$h:$m';
 }
 
 /// Смуга найближчих днів. Обраний день — фірмовий градієнт, решта — surface2.
@@ -154,15 +170,20 @@ class ScheduleSlots extends ConsumerWidget {
             .value ??
         const <Appointment>[];
 
+    final schedule = scheduleOrFallback(ref);
     final slots = freeSlotsFor(
       dayAppointments: appts,
       day: dayStart,
       durationMinutes: durationMinutes,
+      schedule: schedule,
       ignoreId: ignoreId,
     );
 
     if (slots.isEmpty) {
-      return Text(t('На цей день вільних вікон немає'),
+      return Text(
+          schedule.forDate(dayStart).isOpen
+              ? t('На цей день вільних вікон немає')
+              : t('Цього дня ви не працюєте'),
           style: AppTypography.label(k.ink3).copyWith(fontSize: 13));
     }
 

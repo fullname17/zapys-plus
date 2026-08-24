@@ -22,9 +22,32 @@ class Businesses extends Table {
   // Мультивалютность и мультизональность на уровне арендатора (мировые дефолты).
   TextColumn get currency => text().withDefault(const Constant('USD'))();
   TextColumn get timeZone => text().withDefault(const Constant('UTC'))();
+
+  /// Крок сітки запису: 5 / 10 / 15 / 30 хв. У майстра з нарощуванням і в
+  /// барбера різні звички — жорсткі півгодини підходять не всім.
+  IntColumn get slotStepMinutes => integer().withDefault(const Constant(30))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// Робочий тиждень: рядок на кожен день. Години, вихідні й перерва — те, без
+/// чого підбір вільних вікон вигадує розклад за майстра.
+@DataClassName('WorkingHoursRow')
+class WorkingHours extends Table {
+  TextColumn get businessId => text()();
+
+  /// 1 = понеділок … 7 = неділя (як у DateTime.weekday).
+  IntColumn get weekday => integer()();
+  BoolColumn get isOpen => boolean().withDefault(const Constant(true))();
+
+  /// Хвилини від опівночі: 600 = 10:00, 1200 = 20:00.
+  IntColumn get openMinutes => integer().withDefault(const Constant(600))();
+  IntColumn get closeMinutes => integer().withDefault(const Constant(1200))();
+  IntColumn get breakStartMinutes => integer().nullable()();
+  IntColumn get breakEndMinutes => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {businessId, weekday};
 }
 
 @DataClassName('LocationRow')
@@ -65,6 +88,9 @@ class Services extends Table {
   TextColumn get name => text()();
   IntColumn get durationMinutes => integer()();
   IntColumn get price => integer()(); // минимальные единицы валюты
+  /// Прихована послуга: зникає з каталогу й нових записів, але минулі візити
+  /// на неї лишаються цілими.
+  BoolColumn get archived => boolean().withDefault(const Constant(false))();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -113,6 +139,7 @@ class Appointments extends Table {
 @DriftDatabase(
   tables: [
     Businesses,
+    WorkingHours,
     Locations,
     StaffMembers,
     ServiceCategories,
@@ -137,7 +164,37 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            // Розклад майстра: нова таблиця + крок сітки. Наявні бази
+            // отримують типовий тиждень 10:00–20:00, неділя вихідна.
+            await m.createTable(workingHours);
+            await m.addColumn(businesses, businesses.slotStepMinutes);
+            await m.addColumn(services, services.archived);
+            final rows = await select(businesses).get();
+            for (final b in rows) {
+              await _seedWorkingHours(b.id);
+            }
+          }
+        },
+      );
+
+  /// Типовий тиждень: пн–сб 10:00–20:00, неділя вихідна.
+  Future<void> _seedWorkingHours(String businessId) async {
+    await batch((b) => b.insertAll(workingHours, [
+          for (var d = 1; d <= 7; d++)
+            WorkingHoursCompanion.insert(
+              businessId: businessId,
+              weekday: d,
+              isOpen: Value(d != 7),
+            ),
+        ]));
+  }
 
   // --- Маппинг строк БД → доменные модели ---
   domain.Client _toClient(ClientRow r) => domain.Client(
@@ -149,13 +206,16 @@ class AppDatabase extends _$AppDatabase {
         note: r.note,
       );
 
-  domain.Service _toService(ServiceRow r) => domain.Service(
+  /// [categoryName] — назва групи з таблиці категорій. Саме назва, а не id:
+  /// каталог групує послуги за нею, і вона ж дає колір у календарі. Шаблони
+  /// сфер заводять власні категорії, тож вгадувати групу з id більше не можна.
+  domain.Service _toService(ServiceRow r, {String? categoryName}) =>
+      domain.Service(
         id: r.id,
         name: r.name,
         durationMinutes: r.durationMinutes,
         price: r.price,
-        // Категорія (cat_man / cat_ped / …) — звідси каталог бере групу.
-        category: r.categoryId,
+        category: categoryName,
       );
 
   domain.Staff _toStaff(StaffRow r) =>
@@ -189,9 +249,16 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<domain.Service>> watchServices() {
-    return (select(services)..orderBy([(t) => OrderingTerm.asc(t.name)]))
-        .watch()
-        .map((rows) => rows.map(_toService).toList());
+    final q = select(services).join([
+      leftOuterJoin(serviceCategories,
+          serviceCategories.id.equalsExp(services.categoryId)),
+    ])
+      ..where(services.archived.equals(false))
+      ..orderBy([OrderingTerm.asc(services.name)]);
+    return q.watch().map((rows) => rows
+        .map((r) => _toService(r.readTable(services),
+            categoryName: r.readTableOrNull(serviceCategories)?.name))
+        .toList());
   }
 
   /// Полный join записи (клиент+услуга+мастер+ресурс) для одного ряда.
@@ -283,6 +350,77 @@ class AppDatabase extends _$AppDatabase {
     return (delete(appointments)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Останній візит кожного клієнта — для інсайту «давно не були».
+  /// Рахуємо в базі (group by), а не тягнемо всі записи в застосунок.
+  Stream<Map<String, DateTime>> watchLastVisits() {
+    final last = appointments.startAt.max();
+    final q = selectOnly(appointments)
+      ..addColumns([appointments.clientId, last])
+      ..where(appointments.status.isNotIn([
+        domain.AppointmentStatus.cancelled.name,
+        domain.AppointmentStatus.noShow.name,
+      ]))
+      ..groupBy([appointments.clientId]);
+    return q.watch().map((rows) => {
+          for (final r in rows)
+            if (r.read(last) != null)
+              r.read(appointments.clientId)!: r.read(last)!,
+        });
+  }
+
+  // --- Розклад ---
+  /// Розклад одним запитом: рядки тижня + налаштування бізнесу (крок сітки).
+  Stream<domain.Schedule> watchSchedule({String businessId = 'b1'}) {
+    final q = select(workingHours).join([
+      innerJoin(businesses, businesses.id.equalsExp(workingHours.businessId)),
+    ])
+      ..where(workingHours.businessId.equals(businessId))
+      ..orderBy([OrderingTerm.asc(workingHours.weekday)]);
+
+    return q.watch().map((rows) {
+      final hours = rows.map((r) => r.readTable(workingHours)).toList();
+      final step =
+          rows.isEmpty ? 30 : rows.first.readTable(businesses).slotStepMinutes;
+      return domain.Schedule(
+        slotStepMinutes: step,
+        days: [
+          for (var d = 1; d <= 7; d++)
+            _toWorkingDay(hours.where((r) => r.weekday == d).firstOrNull, d),
+        ],
+      );
+    });
+  }
+
+  domain.WorkingDay _toWorkingDay(WorkingHoursRow? r, int weekday) =>
+      domain.WorkingDay(
+        weekday: weekday,
+        isOpen: r?.isOpen ?? (weekday != 7),
+        openMinutes: r?.openMinutes ?? 600,
+        closeMinutes: r?.closeMinutes ?? 1200,
+        breakStartMinutes: r?.breakStartMinutes,
+        breakEndMinutes: r?.breakEndMinutes,
+      );
+
+  Future<void> saveSchedule(domain.Schedule s, {String businessId = 'b1'}) {
+    return transaction(() async {
+      await (update(businesses)..where((t) => t.id.equals(businessId))).write(
+          BusinessesCompanion(slotStepMinutes: Value(s.slotStepMinutes)));
+      for (final d in s.days) {
+        await into(workingHours).insertOnConflictUpdate(
+          WorkingHoursCompanion.insert(
+            businessId: businessId,
+            weekday: d.weekday,
+            isOpen: Value(d.isOpen),
+            openMinutes: Value(d.openMinutes),
+            closeMinutes: Value(d.closeMinutes),
+            breakStartMinutes: Value(d.breakStartMinutes),
+            breakEndMinutes: Value(d.breakEndMinutes),
+          ),
+        );
+      }
+    });
+  }
+
   Future<void> addClient(domain.Client c, {String businessId = 'b1'}) {
     return into(clients).insert(ClientsCompanion.insert(
       id: c.id,
@@ -295,11 +433,68 @@ class AppDatabase extends _$AppDatabase {
     ));
   }
 
-  Future<void> addService(domain.Service s, {String businessId = 'b1'}) {
-    return into(services).insert(ServicesCompanion.insert(
+  Future<void> updateClient(domain.Client c) {
+    return (update(clients)..where((t) => t.id.equals(c.id))).write(
+      ClientsCompanion(
+        name: Value(c.name),
+        phone: Value(c.phone),
+        note: Value(c.note),
+      ),
+    );
+  }
+
+  /// Видалення клієнта разом з його записами — інакше в календарі лишились би
+  /// візити, які нікуди не ведуть.
+  Future<void> deleteClient(String id) {
+    return transaction(() async {
+      await (delete(appointments)..where((t) => t.clientId.equals(id))).go();
+      await (delete(clients)..where((t) => t.id.equals(id))).go();
+    });
+  }
+
+  Future<void> updateService(domain.Service s,
+      {String businessId = 'b1'}) async {
+    final categoryId = await _categoryIdFor(s.category, businessId);
+    await (update(services)..where((t) => t.id.equals(s.id))).write(
+      ServicesCompanion(
+        name: Value(s.name),
+        durationMinutes: Value(s.durationMinutes),
+        price: Value(s.price),
+        categoryId: Value(categoryId),
+      ),
+    );
+  }
+
+  Future<void> archiveService(String id) {
+    return (update(services)..where((t) => t.id.equals(id)))
+        .write(const ServicesCompanion(archived: Value(true)));
+  }
+
+  /// Категорія за назвою: знаходимо наявну або заводимо нову. Так каталог не
+  /// обростає дублями, а нові сфери додають свої групи самі.
+  Future<String?> _categoryIdFor(String? name, String businessId) async {
+    if (name == null || name.trim().isEmpty) return null;
+    final found = await (select(serviceCategories)
+          ..where((t) =>
+              t.businessId.equals(businessId) & t.name.equals(name.trim()))
+          ..limit(1))
+        .getSingleOrNull();
+    if (found != null) return found.id;
+    final id = '${businessId}_cat_${DateTime.now().microsecondsSinceEpoch}';
+    await into(serviceCategories).insert(ServiceCategoriesCompanion.insert(
+      id: id,
+      businessId: businessId,
+      name: name.trim(),
+    ));
+    return id;
+  }
+
+  Future<void> addService(domain.Service s, {String businessId = 'b1'}) async {
+    final categoryId = await _categoryIdFor(s.category, businessId);
+    await into(services).insert(ServicesCompanion.insert(
       id: s.id,
       businessId: businessId,
-      categoryId: Value(s.category),
+      categoryId: Value(categoryId),
       name: s.name,
       durationMinutes: s.durationMinutes,
       price: s.price,
@@ -329,6 +524,7 @@ class AppDatabase extends _$AppDatabase {
         LocationsCompanion.insert(
             id: 'l1', businessId: 'b1', name: 'Київ, центр'),
       );
+      await _seedWorkingHours('b1');
       await into(staffMembers).insert(StaffMembersCompanion.insert(
           id: 'st1',
           businessId: 'b1',

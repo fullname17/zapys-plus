@@ -32,17 +32,11 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     });
   }
 
-  /// Група послуги: спершу явна категорія з БД, далі — за id (демо-послуги
-  /// сиду заведені до появи категорій у формі створення).
+  /// Група послуги — назва категорії з бази. Для демо-послуг сиду, заведених
+  /// до появи категорій, лишається запасний розбір за id.
   static String _cat(Service s) {
-    switch (s.category) {
-      case 'cat_man':
-        return 'Манікюр';
-      case 'cat_ped':
-        return 'Педикюр';
-      case 'cat_other':
-        return 'Інше';
-    }
+    final c = s.category;
+    if (c != null && c.trim().isNotEmpty) return c.trim();
     final id = s.id;
     return (id.contains('spa') || id.contains('exp') || id.contains('ped'))
         ? 'Педикюр'
@@ -62,7 +56,8 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     for (final s in services) {
       groups.putIfAbsent(_cat(s), () => []).add(s);
     }
-    const order = ['Манікюр', 'Педикюр', 'Інше'];
+    // Порядок груп — як їх завела сфера; звичні б'юті-групи лишаємо зверху.
+    const order = ['Манікюр', 'Педикюр'];
     final cats = [
       ...order.where(groups.containsKey),
       ...groups.keys.where((c) => !order.contains(c)),
@@ -109,7 +104,8 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       ZLabel(t(cat)),
-                      Text(tp('{n} послуги', {'n': groups[cat]!.length}),
+                      Text(
+                          '${groups[cat]!.length} ${tn(groups[cat]!.length, 'послуга', 'послуги', 'послуг')}',
                           style: AppTypography.label(k.ink3)
                               .copyWith(fontSize: 12)),
                     ],
@@ -157,40 +153,51 @@ class _CategoryCard extends StatelessWidget {
       child: Column(
         children: [
           for (var i = 0; i < items.length; i++)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              decoration: BoxDecoration(
-                border: i == 0 ? null : Border(top: BorderSide(color: k.line)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: apptColor(items[i].id),
-                        borderRadius: BorderRadius.circular(4)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(items[i].name,
-                            style: AppTypography.label(k.ink).copyWith(
-                                fontSize: 14, fontWeight: FontWeight.w600)),
-                        Text(Fmt.duration(items[i].durationMinutes),
-                            style: AppTypography.label(k.ink3)
-                                .copyWith(fontSize: 12)),
-                      ],
+            GestureDetector(
+              onTap: () {
+                zTap();
+                showEditServiceSheet(context, items[i]);
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                decoration: BoxDecoration(
+                  border:
+                      i == 0 ? null : Border(top: BorderSide(color: k.line)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                          color: apptColor(items[i].id,
+                              category: items[i].category),
+                          borderRadius: BorderRadius.circular(4)),
                     ),
-                  ),
-                  Text(Fmt.money(items[i].price),
-                      style: AppTypography.tabular(AppTypography.label(k.ink))
-                          .copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 10),
-                  Icon(Icons.more_horiz, size: 18, color: k.ink3),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(items[i].name,
+                              style: AppTypography.label(k.ink).copyWith(
+                                  fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text(Fmt.duration(items[i].durationMinutes),
+                              style: AppTypography.label(k.ink3)
+                                  .copyWith(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Text(Fmt.money(items[i].price),
+                        style: AppTypography.tabular(AppTypography.label(k.ink))
+                            .copyWith(
+                                fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 10),
+                    Icon(Icons.chevron_right, size: 18, color: k.ink3),
+                  ],
+                ),
               ),
             ),
         ],

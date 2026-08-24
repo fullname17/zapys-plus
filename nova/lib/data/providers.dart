@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/services/subscriptions/entitlements.dart';
@@ -31,6 +32,16 @@ final appointmentsRepositoryProvider = Provider<AppointmentsRepository>(
     (ref) => DriftAppointmentsRepository(ref.watch(databaseProvider)));
 final workspaceRepositoryProvider = Provider<WorkspaceRepository>(
     (ref) => DriftWorkspaceRepository(ref.watch(databaseProvider)));
+final scheduleRepositoryProvider = Provider<ScheduleRepository>(
+    (ref) => DriftScheduleRepository(ref.watch(databaseProvider)));
+
+/// Розклад майстра. Поки не завантажився — типовий тиждень, щоб екрани не
+/// чекали й не показували порожній календар.
+final scheduleProvider = StreamProvider<Schedule>(
+    (ref) => ref.watch(scheduleRepositoryProvider).watch());
+
+Schedule scheduleOrFallback(WidgetRef ref) =>
+    ref.watch(scheduleProvider).value ?? Schedule.fallback;
 
 /// Все клиенты (реактивно из БД).
 final clientsProvider = StreamProvider<List<Client>>(
@@ -97,6 +108,24 @@ final daySummaryProvider = Provider<DaySummary>((ref) {
   return DaySummary(revenue: revenue, visits: appts.length, load: load);
 });
 
+/// Клієнти, які давно не приходили: останній візит понад [kLapsedDays] днів
+/// тому або візитів не було зовсім. Раніше це число було зашите (завжди «3»).
+const int kLapsedDays = 45;
+
+final lastVisitsProvider = StreamProvider<Map<String, DateTime>>(
+    (ref) => ref.watch(databaseProvider).watchLastVisits());
+
+final lapsedClientsProvider = Provider<List<Client>>((ref) {
+  final clients = ref.watch(clientsProvider).value ?? const <Client>[];
+  final last =
+      ref.watch(lastVisitsProvider).value ?? const <String, DateTime>{};
+  final now = demoNow();
+  return [
+    for (final c in clients)
+      if (now.difference(last[c.id] ?? DateTime(2000)).inDays > kLapsedDays) c,
+  ];
+});
+
 /// Дані головного екрана «Сьогодні»: зароблено, кількість, наступний клієнт,
 /// вільні вікна, інсайт повернення.
 @immutable
@@ -108,6 +137,7 @@ class DashboardData {
     required this.next,
     required this.minutesToNext,
     required this.lapsedCount,
+    required this.busyUntil,
   });
   final int revenue; // зароблено (завершені), у мін. одиницях
   final int visits; // усього записів на день
@@ -115,6 +145,7 @@ class DashboardData {
   final Appointment? next; // найближчий майбутній запис
   final int minutesToNext; // хвилин до наступного
   final int lapsedCount; // клієнти, що давно не були
+  final DateTime? busyUntil; // кінець останнього живого запису дня
 }
 
 final dashboardProvider = Provider<DashboardData>((ref) {
@@ -157,13 +188,19 @@ final dashboardProvider = Provider<DashboardData>((ref) {
     windows.add(_ceilTo15(cursor));
   }
 
+  DateTime? busyUntil;
+  for (final a in appts.where((a) => a.isActive)) {
+    if (busyUntil == null || a.end.isAfter(busyUntil)) busyUntil = a.end;
+  }
+
   return DashboardData(
     revenue: revenue,
+    busyUntil: busyUntil,
     visits: appts.length,
     freeWindows: windows.take(3).toList(),
     next: next,
     minutesToNext: minutesToNext,
-    lapsedCount: 3,
+    lapsedCount: ref.watch(lapsedClientsProvider).length,
   );
 });
 

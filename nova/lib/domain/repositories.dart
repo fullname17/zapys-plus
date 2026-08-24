@@ -7,11 +7,26 @@ import 'models.dart';
 abstract interface class ClientsRepository {
   Stream<List<Client>> watchAll();
   Future<void> add(Client client);
+  Future<void> update(Client client);
+
+  /// Видалення разом з історією візитів — картка зникає назавжди.
+  Future<void> delete(String id);
 }
 
 abstract interface class ServicesRepository {
   Stream<List<Service>> watchAll();
   Future<void> add(Service service);
+  Future<void> update(Service service);
+
+  /// Приховати послугу з каталогу. М'яко: минулі записи на неї лишаються
+  /// цілими, інакше з історії клієнта зникли б візити.
+  Future<void> archive(String id);
+}
+
+/// Розклад майстра: години по днях тижня, вихідні, перерва, крок сітки.
+abstract interface class ScheduleRepository {
+  Stream<Schedule> watch();
+  Future<void> save(Schedule schedule);
 }
 
 abstract interface class AppointmentsRepository {

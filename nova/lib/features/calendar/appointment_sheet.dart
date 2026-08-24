@@ -65,7 +65,8 @@ class _AppointmentSheet extends ConsumerWidget {
   /// Нагадування знімаються, статус можна повернути одним дотиком.
   Future<void> _cancel(WidgetRef ref, BuildContext context) async {
     HapticFeedback.mediumImpact();
-    final messenger = ScaffoldMessenger.of(context);
+    // Тостер беремо до await: контекст листа помре після pop.
+    final toast = zToaster(context);
     final navigator = Navigator.of(context);
     final was = appointment.status;
     final repo = ref.read(appointmentsRepositoryProvider);
@@ -77,17 +78,14 @@ class _AppointmentSheet extends ConsumerWidget {
         .track(AnalyticsEvent.appointmentCancelled);
     navigator.pop();
 
-    messenger.showSnackBar(SnackBar(
-      content: Text(
-          tp('Запис скасовано · {name}', {'name': appointment.client.name})),
-      action: SnackBarAction(
-        label: t('Повернути'),
-        onPressed: () async {
-          await repo.updateStatus(appointment.id, was);
-          await scheduleAppointmentReminders(ref, appointment);
-        },
-      ),
-    ));
+    toast(
+      tp('Запис скасовано · {name}', {'name': appointment.client.name}),
+      actionLabel: t('Повернути'),
+      onAction: () async {
+        await repo.updateStatus(appointment.id, was);
+        await scheduleAppointmentReminders(ref, appointment);
+      },
+    );
   }
 
   /// Повернення скасованого запису на те саме місце.
@@ -107,7 +105,8 @@ class _AppointmentSheet extends ConsumerWidget {
   /// у нас на руках, тож відновлення — це просто вставка того самого id.
   Future<void> _delete(WidgetRef ref, BuildContext context) async {
     HapticFeedback.mediumImpact();
-    final messenger = ScaffoldMessenger.of(context);
+    // Тостер беремо до await: контекст листа помре після pop.
+    final toast = zToaster(context);
     final navigator = Navigator.of(context);
     final repo = ref.read(appointmentsRepositoryProvider);
 
@@ -118,16 +117,14 @@ class _AppointmentSheet extends ConsumerWidget {
         .track(AnalyticsEvent.appointmentDeleted);
     navigator.pop();
 
-    messenger.showSnackBar(SnackBar(
-      content: Text(t('Запис видалено')),
-      action: SnackBarAction(
-        label: t('Повернути'),
-        onPressed: () async {
-          await repo.add(appointment);
-          await scheduleAppointmentReminders(ref, appointment);
-        },
-      ),
-    ));
+    toast(
+      t('Запис видалено'),
+      actionLabel: t('Повернути'),
+      onAction: () async {
+        await repo.add(appointment);
+        await scheduleAppointmentReminders(ref, appointment);
+      },
+    );
   }
 
   // ── Вигляд ────────────────────────────────────────────────────────────
@@ -240,7 +237,9 @@ class _AppointmentSheet extends ConsumerWidget {
                 child: ZActionTile(
                   icon: Icons.swap_horiz,
                   label: t('Перенести'),
-                  onTap: cancelled
+                  // Візит, який уже відбувся або скасований, переносити нікуди:
+                  // для нового візиту є «Записати ще раз».
+                  onTap: cancelled || done
                       ? null
                       : () {
                           Navigator.of(context).pop();

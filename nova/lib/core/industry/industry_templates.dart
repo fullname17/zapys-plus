@@ -60,10 +60,79 @@ class IndustryTemplate {
       ];
 }
 
-/// Каталог отраслей — покрывает 10+ вертикалей. Расширяется данными, не кодом.
+/// Каталог сфер. Розширюється даними, а не кодом: щоб додати нову професію,
+/// достатньо дописати сюди шаблон — екрани не змінюються.
+///
+/// Ціни — у мінорних одиницях (×100) і в гривні: 50000 = ₴500. Це орієнтири
+/// українського ринку, майстер міняє їх під себе за пів хвилини.
+/// Порядок важливий: ядро аудиторії (б'юті) — зверху.
 abstract final class IndustryCatalog {
   static const List<IndustryTemplate> all = [
-    // — Красота —
+    // — Ядро: вії, брови, нігті —
+    IndustryTemplate(
+      id: 'lashes',
+      title: 'Вії',
+      icon: Icons.remove_red_eye_outlined,
+      color: Color(0xFF9A9AF6),
+      categories: [
+        ServiceCategoryTemplate('Нарощування', [
+          ServiceTemplate('Класика', 120, 60000),
+          ServiceTemplate('2D–3D об\'єм', 150, 75000),
+          ServiceTemplate('Корекція', 90, 50000),
+          ServiceTemplate('Зняття', 30, 15000),
+        ]),
+        ServiceCategoryTemplate('Догляд', [
+          ServiceTemplate('Ламінування вій', 60, 55000),
+        ]),
+      ],
+    ),
+    IndustryTemplate(
+      id: 'brows',
+      title: 'Брови',
+      icon: Icons.brush_outlined,
+      color: Color(0xFFB07CE8),
+      categories: [
+        ServiceCategoryTemplate('Брови', [
+          ServiceTemplate('Корекція', 30, 25000),
+          ServiceTemplate('Корекція + фарбування', 60, 40000),
+          ServiceTemplate('Ламінування брів', 60, 55000),
+        ]),
+      ],
+    ),
+    IndustryTemplate(
+      id: 'nails',
+      title: 'Нігті',
+      icon: Icons.back_hand_outlined,
+      color: Color(0xFFE86FA6),
+      categories: [
+        ServiceCategoryTemplate('Манікюр', [
+          ServiceTemplate('Класичний манікюр', 30, 35000),
+          ServiceTemplate('Гель-лак', 45, 50000),
+          ServiceTemplate('Нейл-арт', 60, 75000),
+        ]),
+        ServiceCategoryTemplate('Педикюр', [
+          ServiceTemplate('Spa-педикюр', 60, 65000),
+          ServiceTemplate('Експрес-педикюр', 35, 45000),
+        ]),
+      ],
+    ),
+    // — Волосся й обличчя —
+    IndustryTemplate(
+      id: 'hair',
+      title: 'Перукар / колорист',
+      icon: Icons.content_cut_outlined,
+      color: Color(0xFF5B8DEF),
+      categories: [
+        ServiceCategoryTemplate('Стрижка', [
+          ServiceTemplate('Жіноча стрижка', 60, 45000),
+          ServiceTemplate('Укладка', 45, 35000),
+        ]),
+        ServiceCategoryTemplate('Колір', [
+          ServiceTemplate('Фарбування коренів', 90, 80000),
+          ServiceTemplate('Складне фарбування', 180, 200000),
+        ]),
+      ],
+    ),
     IndustryTemplate(
       id: 'barber',
       title: 'Барбершоп',
@@ -71,203 +140,175 @@ abstract final class IndustryCatalog {
       color: Color(0xFF5B5BD6),
       categories: [
         ServiceCategoryTemplate('Стрижка', [
-          ServiceTemplate('Мужская стрижка', 45, 500000),
-          ServiceTemplate('Стрижка + борода', 60, 700000),
-          ServiceTemplate('Оформление бороды', 30, 350000),
+          ServiceTemplate('Чоловіча стрижка', 45, 40000),
+          ServiceTemplate('Стрижка + борода', 60, 55000),
+          ServiceTemplate('Оформлення бороди', 30, 25000),
         ]),
       ],
     ),
     IndustryTemplate(
-      id: 'hair',
-      title: 'Салон красоты',
-      icon: Icons.face_retouching_natural,
-      color: Color(0xFFD6558B),
+      id: 'makeup',
+      title: 'Візажист',
+      icon: Icons.auto_awesome_outlined,
+      color: Color(0xFFE86FA6),
       categories: [
-        ServiceCategoryTemplate('Волосы', [
-          ServiceTemplate('Стрижка + укладка', 60, 900000),
-          ServiceTemplate('Окрашивание', 120, 2500000),
-          ServiceTemplate('Уход', 45, 700000),
+        ServiceCategoryTemplate('Макіяж', [
+          ServiceTemplate('Денний макіяж', 60, 70000),
+          ServiceTemplate('Вечірній макіяж', 90, 100000),
+          ServiceTemplate('Весільний образ', 150, 250000),
         ]),
       ],
     ),
     IndustryTemplate(
-      id: 'nails',
-      title: 'Ногтевая студия',
-      icon: Icons.back_hand_outlined,
-      color: Color(0xFFCC5DE8),
-      categories: [
-        ServiceCategoryTemplate('Ногти', [
-          ServiceTemplate('Маникюр', 75, 700000),
-          ServiceTemplate('Педикюр', 90, 900000),
-          ServiceTemplate('Наращивание', 120, 1200000),
-        ]),
-      ],
-    ),
-    IndustryTemplate(
-      id: 'spa',
-      title: 'Массаж и СПА',
+      id: 'cosmetology',
+      title: 'Косметолог',
       icon: Icons.spa_outlined,
-      color: Color(0xFF2E9E6B),
+      color: Color(0xFF46D08A),
       categories: [
-        ServiceCategoryTemplate('Массаж', [
-          ServiceTemplate('Классический массаж', 60, 800000),
-          ServiceTemplate('Спортивный массаж', 90, 1200000),
-        ]),
-      ],
-    ),
-    // — Медицина —
-    IndustryTemplate(
-      id: 'dental',
-      title: 'Стоматология',
-      icon: Icons.medical_services_outlined,
-      color: Color(0xFF2F9BDC),
-      categories: [
-        ServiceCategoryTemplate('Приёмы', [
-          ServiceTemplate('Консультация', 30, 500000),
-          ServiceTemplate('Лечение кариеса', 60, 2500000),
-          ServiceTemplate('Профгигиена', 45, 1500000),
+        ServiceCategoryTemplate('Догляд', [
+          ServiceTemplate('Чистка обличчя', 90, 90000),
+          ServiceTemplate('Пілінг', 60, 80000),
+          ServiceTemplate('Масаж обличчя', 45, 60000),
         ]),
       ],
     ),
     IndustryTemplate(
-      id: 'clinic',
-      title: 'Медицинский приём',
-      icon: Icons.health_and_safety_outlined,
-      color: Color(0xFF3BA0A0),
+      id: 'depilation',
+      title: 'Депіляція',
+      icon: Icons.waves_outlined,
+      color: Color(0xFF46C2D0),
       categories: [
-        ServiceCategoryTemplate('Приёмы', [
-          ServiceTemplate('Первичный приём', 40, 1000000),
-          ServiceTemplate('Повторный приём', 25, 700000),
+        ServiceCategoryTemplate('Цукрова / віск', [
+          ServiceTemplate('Гомілки', 40, 35000),
+          ServiceTemplate('Бікіні', 45, 50000),
+          ServiceTemplate('Пахви', 20, 20000),
         ]),
       ],
     ),
-    // — Образование —
     IndustryTemplate(
-      id: 'tutor',
-      title: 'Репетитор',
-      icon: Icons.school_outlined,
-      color: Color(0xFFE0A020),
+      id: 'permanent',
+      title: 'Перманентний макіяж',
+      icon: Icons.colorize_outlined,
+      color: Color(0xFFB07CE8),
       categories: [
-        ServiceCategoryTemplate('Занятия', [
-          ServiceTemplate('Индивидуальное занятие', 60, 600000),
-          ServiceTemplate('Пробный урок', 30, 0),
+        ServiceCategoryTemplate('Перманент', [
+          ServiceTemplate('Брови', 180, 350000),
+          ServiceTemplate('Губи', 180, 400000),
+          ServiceTemplate('Корекція', 90, 150000),
         ]),
       ],
     ),
-    // — Спорт —
+    IndustryTemplate(
+      id: 'tattoo',
+      title: 'Тату й пірсинг',
+      icon: Icons.gesture_outlined,
+      color: Color(0xFF8B8BF0),
+      categories: [
+        ServiceCategoryTemplate('Сеанси', [
+          ServiceTemplate('Ескіз і консультація', 45, 0),
+          ServiceTemplate('Сеанс тату', 180, 300000),
+          ServiceTemplate('Пірсинг', 30, 80000),
+        ]),
+      ],
+    ),
+    IndustryTemplate(
+      id: 'massage',
+      title: 'Масаж і СПА',
+      icon: Icons.self_improvement_outlined,
+      color: Color(0xFF46D08A),
+      categories: [
+        ServiceCategoryTemplate('Масаж', [
+          ServiceTemplate('Класичний масаж', 60, 70000),
+          ServiceTemplate('Спина й шия', 30, 45000),
+          ServiceTemplate('Спа-ритуал', 90, 120000),
+        ]),
+      ],
+    ),
+    // — Поруч: ті самі болі —
     IndustryTemplate(
       id: 'trainer',
-      title: 'Тренер / фитнес',
+      title: 'Тренер / йога',
       icon: Icons.fitness_center_outlined,
-      color: Color(0xFFEF6C3B),
+      color: Color(0xFFE6B24E),
       categories: [
-        ServiceCategoryTemplate('Тренировки', [
-          ServiceTemplate('Персональная тренировка', 60, 700000),
-          ServiceTemplate('Сплит-тренировка', 90, 1000000),
-        ]),
-      ],
-    ),
-    // — Авто —
-    IndustryTemplate(
-      id: 'auto',
-      title: 'Автосервис',
-      icon: Icons.build_outlined,
-      color: Color(0xFF4B5563),
-      categories: [
-        ServiceCategoryTemplate('Работы', [
-          ServiceTemplate('Диагностика', 45, 500000),
-          ServiceTemplate('Замена масла', 40, 800000),
-          ServiceTemplate('Шиномонтаж', 60, 1000000),
+        ServiceCategoryTemplate('Заняття', [
+          ServiceTemplate('Персональне тренування', 60, 50000),
+          ServiceTemplate('Парне тренування', 60, 80000),
         ]),
       ],
     ),
     IndustryTemplate(
-      id: 'carwash',
-      title: 'Автомойка',
-      icon: Icons.local_car_wash_outlined,
-      color: Color(0xFF2F80DC),
+      id: 'tutor',
+      title: 'Репетитор / логопед',
+      icon: Icons.menu_book_outlined,
+      color: Color(0xFF5B8DEF),
       categories: [
-        ServiceCategoryTemplate('Мойка', [
-          ServiceTemplate('Комплексная мойка', 40, 400000),
-          ServiceTemplate('Химчистка салона', 180, 2500000),
-        ]),
-      ],
-    ),
-    // — Домашние услуги —
-    IndustryTemplate(
-      id: 'cleaning',
-      title: 'Клининг',
-      icon: Icons.cleaning_services_outlined,
-      color: Color(0xFF20B2AA),
-      categories: [
-        ServiceCategoryTemplate('Уборка', [
-          ServiceTemplate('Поддерживающая уборка', 120, 1500000),
-          ServiceTemplate('Генеральная уборка', 240, 3500000),
+        ServiceCategoryTemplate('Заняття', [
+          ServiceTemplate('Індивідуальне заняття', 60, 40000),
+          ServiceTemplate('Пробне заняття', 30, 0),
         ]),
       ],
     ),
     IndustryTemplate(
-      id: 'handyman',
-      title: 'Мастер на час',
-      icon: Icons.handyman_outlined,
-      color: Color(0xFF8B6D3B),
-      categories: [
-        ServiceCategoryTemplate('Работы', [
-          ServiceTemplate('Выезд мастера', 60, 500000),
-          ServiceTemplate('Мелкий ремонт', 120, 1000000),
-        ]),
-      ],
-    ),
-    // — Консультации —
-    IndustryTemplate(
-      id: 'consult',
-      title: 'Консультации',
+      id: 'psy',
+      title: 'Психолог / коуч',
       icon: Icons.record_voice_over_outlined,
       color: Color(0xFF6E56CF),
       categories: [
-        ServiceCategoryTemplate('Приём', [
-          ServiceTemplate('Консультация', 60, 1500000),
-          ServiceTemplate('Экспресс-консультация', 30, 800000),
+        ServiceCategoryTemplate('Сесії', [
+          ServiceTemplate('Консультація', 60, 100000),
+          ServiceTemplate('Знайомство', 20, 0),
         ]),
       ],
     ),
-    // — Творчество —
+    IndustryTemplate(
+      id: 'grooming',
+      title: 'Грумінг',
+      icon: Icons.pets_outlined,
+      color: Color(0xFFD98324),
+      categories: [
+        ServiceCategoryTemplate('Догляд', [
+          ServiceTemplate('Комплекс', 120, 90000),
+          ServiceTemplate('Гігієнічна стрижка', 60, 50000),
+          ServiceTemplate('Купання', 45, 35000),
+        ]),
+      ],
+    ),
     IndustryTemplate(
       id: 'photo',
       title: 'Фотограф',
       icon: Icons.photo_camera_outlined,
       color: Color(0xFFB5179E),
       categories: [
-        ServiceCategoryTemplate('Съёмки', [
-          ServiceTemplate('Индивидуальная съёмка', 90, 2500000),
-          ServiceTemplate('Семейная съёмка', 120, 3500000),
+        ServiceCategoryTemplate('Зйомки', [
+          ServiceTemplate('Індивідуальна зйомка', 90, 250000),
+          ServiceTemplate('Сімейна зйомка', 120, 350000),
         ]),
       ],
     ),
-    // — Еда —
     IndustryTemplate(
-      id: 'bakery',
-      title: 'Пекарня / кондитер',
-      icon: Icons.bakery_dining_outlined,
-      color: Color(0xFFD98324),
+      id: 'auto',
+      title: 'Автосервіс / детейлінг',
+      icon: Icons.directions_car_outlined,
+      color: Color(0xFF3E7BFA),
       categories: [
-        ServiceCategoryTemplate('Заказы', [
-          ServiceTemplate('Торт на заказ', 30, 1500000),
-          ServiceTemplate('Капкейки (набор)', 20, 700000),
-          ServiceTemplate('Дегустация', 45, 0),
+        ServiceCategoryTemplate('Роботи', [
+          ServiceTemplate('Діагностика', 60, 50000),
+          ServiceTemplate('Заміна оливи', 45, 40000),
+          ServiceTemplate('Комплексне миття', 90, 80000),
         ]),
       ],
     ),
-    // — Универсальное —
+    // — Універсальне —
     IndustryTemplate(
       id: 'other',
-      title: 'Другое',
+      title: 'Інше',
       icon: Icons.more_horiz,
       color: Color(0xFF6A6A76),
       categories: [
-        ServiceCategoryTemplate('Услуги', [
-          ServiceTemplate('Услуга', 60, 500000),
-          ServiceTemplate('Консультация', 30, 0),
+        ServiceCategoryTemplate('Послуги', [
+          ServiceTemplate('Послуга', 60, 50000),
+          ServiceTemplate('Консультація', 30, 0),
         ]),
       ],
     ),

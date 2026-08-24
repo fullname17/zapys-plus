@@ -109,7 +109,8 @@ class _CreateSheetState extends ConsumerState<_CreateSheet> {
 
   Future<void> _create(BuildContext context) async {
     HapticFeedback.mediumImpact();
-    final messenger = ScaffoldMessenger.of(context);
+    // Тостер беремо до await: контекст листа помре після pop.
+    final toast = zToaster(context);
     final navigator = Navigator.of(context);
     final appt = Appointment(
       id: 'a${DateTime.now().microsecondsSinceEpoch}',
@@ -124,11 +125,8 @@ class _CreateSheetState extends ConsumerState<_CreateSheet> {
         .track(AnalyticsEvent.appointmentCreated);
     await scheduleAppointmentReminders(ref, appt);
     navigator.pop();
-    messenger.showSnackBar(
-      SnackBar(
-          content: Text(tp('Записано {name} · {time}',
-              {'name': _client!.name, 'time': Fmt.time(_slot!)}))),
-    );
+    toast(tp('Записано {name} · {time}',
+        {'name': _client!.name, 'time': Fmt.time(_slot!)}));
   }
 }
 
@@ -245,7 +243,7 @@ class ServicePicker extends StatelessWidget {
                         // На градієнті кольорова мітка тоне — робимо її білою.
                         color: selected?.id == s.id
                             ? Colors.white
-                            : apptColor(s.id),
+                            : apptColor(s.id, category: s.category),
                         borderRadius: BorderRadius.circular(3))),
                 const SizedBox(width: 7),
                 Text('${s.name} · ${Fmt.money(s.price)}',

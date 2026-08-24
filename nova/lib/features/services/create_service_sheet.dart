@@ -11,36 +11,55 @@ import '../../domain/models.dart';
 import '../../ui/format.dart';
 import '../../ui/kavio_sheet.dart';
 import '../../ui/z.dart';
+import '../calendar/calendar_screen.dart' show apptColor;
 
-/// Нова послуга — v3 bottom sheet. Зверху живий рядок каталогу: кольорова
-/// мітка категорії, назва, тривалість і ціна складаються під час набору.
-/// Тривалість і ціна мають пресети — типова послуга додається у три дотики.
+/// Послуга — v3 bottom sheet, один і той самий для створення й редагування.
+/// Зверху живий рядок каталогу: кольорова мітка категорії, назва, тривалість
+/// і ціна складаються під час набору. Тривалість і ціна мають пресети.
 /// Ціна вводиться в гривнях, зберігається в мінорних одиницях (×100).
 Future<void> showCreateServiceSheet(BuildContext context) =>
-    showKavioSheet<void>(context, builder: (_) => const _CreateServiceSheet());
+    showKavioSheet<void>(context, builder: (_) => const _ServiceSheet());
 
-class _CreateServiceSheet extends ConsumerStatefulWidget {
-  const _CreateServiceSheet();
+/// Редагування наявної послуги: ті самі поля, плюс «Прибрати з каталогу».
+Future<void> showEditServiceSheet(BuildContext context, Service service) =>
+    showKavioSheet<void>(context,
+        builder: (_) => _ServiceSheet(existing: service));
+
+class _ServiceSheet extends ConsumerStatefulWidget {
+  const _ServiceSheet({this.existing});
+  final Service? existing;
 
   @override
-  ConsumerState<_CreateServiceSheet> createState() =>
-      _CreateServiceSheetState();
+  ConsumerState<_ServiceSheet> createState() => _ServiceSheetState();
 }
 
-class _CreateServiceSheetState extends ConsumerState<_CreateServiceSheet> {
-  final _name = TextEditingController();
-  final _duration = TextEditingController(text: '60');
-  final _price = TextEditingController();
+class _ServiceSheetState extends ConsumerState<_ServiceSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _duration;
+  late final TextEditingController _price;
   bool _saving = false;
+
+  Service? get _existing => widget.existing;
+  bool get _isEdit => _existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = _existing;
+    _name = TextEditingController(text: e?.name ?? '');
+    _duration = TextEditingController(text: '${e?.durationMinutes ?? 60}');
+    _price = TextEditingController(
+        text: e == null ? '' : '${(e.price / 100).round()}');
+    if (e?.category != null) _categoryId = e!.category!;
+  }
 
   /// Категорія визначає колір мітки в календарі й каталозі — той самий
   /// [apptColor], тільки обраний явно, а не вгаданий з id.
-  static const _categories = <(String, String, Color)>[
-    ('cat_man', 'Манікюр', Color(0xFF9A9AF6)),
-    ('cat_ped', 'Педикюр', Color(0xFF46D08A)),
-    ('cat_other', 'Інше', Color(0xFFE6B24E)),
-  ];
-  String _categoryId = 'cat_man';
+  /// Групи каталогу. Список рухомий: сюди підмішуються категорії, які вже є
+  /// в майстра (з шаблону його сфери), тож барбер не обирає між манікюром і
+  /// педикюром.
+  static const _fallbackCategories = ['Манікюр', 'Педикюр', 'Інше'];
+  String _categoryId = '';
 
   static const _durationPresets = [30, 45, 60, 90];
   static const _pricePresets = [350, 500, 650, 750];
@@ -57,44 +76,76 @@ class _CreateServiceSheetState extends ConsumerState<_CreateServiceSheet> {
   int get _minutes => int.tryParse(_duration.text.trim()) ?? 60;
   int get _major => int.tryParse(_price.text.trim()) ?? 0;
 
-  Color get _categoryColor =>
-      _categories.firstWhere((c) => c.$1 == _categoryId).$3;
+  Color get _categoryColor => apptColor('', category: _categoryId);
 
   Future<void> _save() async {
     if (!_valid || _saving) return;
     setState(() => _saving = true);
     HapticFeedback.mediumImpact();
-    final messenger = ScaffoldMessenger.of(context);
+    // Тостер беремо до await: контекст листа помре після pop.
+    final toast = zToaster(context);
     final navigator = Navigator.of(context);
+    final repo = ref.read(servicesRepositoryProvider);
 
     final service = Service(
-      // Категорія зашита в id — саме звідти каталог і календар беруть колір.
-      id: '${_categoryId}_${DateTime.now().microsecondsSinceEpoch}',
+      // При редагуванні id незмінний, інакше минулі записи осиротіли б.
+      id: _existing?.id ?? 'sv_${DateTime.now().microsecondsSinceEpoch}',
       name: _name.text.trim(),
       durationMinutes: _minutes,
       price: _major * 100,
       category: _categoryId,
     );
-    await ref.read(servicesRepositoryProvider).add(service);
-    await ref
-        .read(analyticsServiceProvider)
-        .track(AnalyticsEvent.serviceCreated);
+
+    if (_isEdit) {
+      await repo.update(service);
+    } else {
+      await repo.add(service);
+      await ref
+          .read(analyticsServiceProvider)
+          .track(AnalyticsEvent.serviceCreated);
+    }
 
     navigator.pop();
-    messenger.showSnackBar(
-      SnackBar(
-          content: Text(tp('Послугу «{name}» додано', {'name': service.name}))),
+    toast(_isEdit
+        ? tp('Послугу «{name}» змінено', {'name': service.name})
+        : tp('Послугу «{name}» додано', {'name': service.name}));
+  }
+
+  /// Прибирання з каталогу м'яке: минулі візити на цю послугу лишаються
+  /// цілими, інакше з історії клієнта зникли б записи.
+  Future<void> _archive() async {
+    final e = _existing!;
+    HapticFeedback.mediumImpact();
+    final toast = zToaster(context);
+    final navigator = Navigator.of(context);
+    final repo = ref.read(servicesRepositoryProvider);
+
+    await repo.archive(e.id);
+    navigator.pop();
+    toast(
+      tp('Послугу «{name}» прибрано', {'name': e.name}),
+      actionLabel: t('Повернути'),
+      onAction: () => repo.update(e),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
+
+    // Групи майстра + запасні, щоб було з чого обрати на порожньому каталозі.
+    final existing = (ref.watch(servicesProvider).value ?? const <Service>[])
+        .map((s) => s.category)
+        .whereType<String>()
+        .toSet();
+    final categories = <String>{...existing, ..._fallbackCategories}.toList();
+    if (_categoryId.isEmpty) _categoryId = categories.first;
+
     var i = 0;
     Widget reveal(Widget child) => StaggerReveal(index: i++, child: child);
 
     return KavioSheet(
-      title: t('Нова послуга'),
+      title: _isEdit ? t('Послуга') : t('Нова послуга'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -158,10 +209,10 @@ class _CreateServiceSheetState extends ConsumerState<_CreateServiceSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final c in _categories)
+              for (final c in categories)
                 ZChip(
-                  selected: _categoryId == c.$1,
-                  onTap: () => setState(() => _categoryId = c.$1),
+                  selected: _categoryId == c,
+                  onTap: () => setState(() => _categoryId = c),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -169,13 +220,15 @@ class _CreateServiceSheetState extends ConsumerState<_CreateServiceSheet> {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                            color: _categoryId == c.$1 ? Colors.white : c.$3,
+                            color: _categoryId == c
+                                ? Colors.white
+                                : apptColor('', category: c),
                             borderRadius: BorderRadius.circular(3)),
                       ),
                       const SizedBox(width: 7),
-                      Text(t(c.$2),
+                      Text(t(c),
                           style: AppTypography.label(
-                                  _categoryId == c.$1 ? Colors.white : k.ink)
+                                  _categoryId == c ? Colors.white : k.ink)
                               .copyWith(
                                   fontSize: 13, fontWeight: FontWeight.w600)),
                     ],
@@ -228,6 +281,20 @@ class _CreateServiceSheetState extends ConsumerState<_CreateServiceSheet> {
             icon: Icons.check,
             onTap: _valid && !_saving ? _save : null,
           )),
+          if (_isEdit) ...[
+            const SizedBox(height: 10),
+            reveal(Center(
+              child: TextButton(
+                onPressed: () {
+                  zTap();
+                  _archive();
+                },
+                child: Text(t('Прибрати з каталогу'),
+                    style: AppTypography.label(k.danger)
+                        .copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            )),
+          ],
           const SizedBox(height: 4),
         ],
       ),

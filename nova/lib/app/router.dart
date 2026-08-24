@@ -12,6 +12,7 @@ import '../features/public_booking/public_booking_screen.dart';
 import '../features/signature/magic_rebook_screen.dart';
 import '../features/signature/recap_screen.dart';
 import '../features/signature/smart_gaps_screen.dart';
+import '../features/schedule/schedule_screen.dart';
 import '../features/services/services_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/splash/splash_screen.dart';
@@ -114,6 +115,9 @@ GoRouter _buildRouter() {
       GoRoute(
           path: Routes.services,
           pageBuilder: (context, state) => _springPage(const ServicesScreen())),
+      GoRoute(
+          path: Routes.schedule,
+          pageBuilder: (context, state) => _springPage(const ScheduleScreen())),
       GoRoute(
           path: Routes.profile,
           pageBuilder: (context, state) => _springPage(const ProfileScreen())),

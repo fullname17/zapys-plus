@@ -150,3 +150,79 @@ class Appointment {
       status != AppointmentStatus.cancelled &&
       status != AppointmentStatus.noShow;
 }
+
+/// Робочий день майстра. Час — у хвилинах від опівночі (600 = 10:00), щоб не
+/// тягати DateTime там, де дата не має значення.
+@immutable
+class WorkingDay {
+  const WorkingDay({
+    required this.weekday,
+    required this.isOpen,
+    required this.openMinutes,
+    required this.closeMinutes,
+    this.breakStartMinutes,
+    this.breakEndMinutes,
+  });
+
+  /// 1 = понеділок … 7 = неділя (як у DateTime.weekday).
+  final int weekday;
+  final bool isOpen;
+  final int openMinutes;
+  final int closeMinutes;
+  final int? breakStartMinutes;
+  final int? breakEndMinutes;
+
+  bool get hasBreak =>
+      breakStartMinutes != null &&
+      breakEndMinutes != null &&
+      breakEndMinutes! > breakStartMinutes!;
+
+  WorkingDay copyWith({
+    bool? isOpen,
+    int? openMinutes,
+    int? closeMinutes,
+    int? breakStartMinutes,
+    int? breakEndMinutes,
+    bool clearBreak = false,
+  }) =>
+      WorkingDay(
+        weekday: weekday,
+        isOpen: isOpen ?? this.isOpen,
+        openMinutes: openMinutes ?? this.openMinutes,
+        closeMinutes: closeMinutes ?? this.closeMinutes,
+        breakStartMinutes:
+            clearBreak ? null : (breakStartMinutes ?? this.breakStartMinutes),
+        breakEndMinutes:
+            clearBreak ? null : (breakEndMinutes ?? this.breakEndMinutes),
+      );
+}
+
+/// Тиждень майстра + крок сітки запису.
+@immutable
+class Schedule {
+  const Schedule({required this.days, required this.slotStepMinutes});
+
+  /// Рівно 7 днів, у порядку понеділок → неділя.
+  final List<WorkingDay> days;
+  final int slotStepMinutes;
+
+  WorkingDay forDate(DateTime d) => days[d.weekday - 1];
+
+  /// Типовий тиждень для першого запуску: пн–сб 10:00–20:00, неділя вихідна.
+  static Schedule get fallback => Schedule(
+        slotStepMinutes: 30,
+        days: [
+          for (var d = 1; d <= 7; d++)
+            WorkingDay(
+                weekday: d,
+                isOpen: d != 7,
+                openMinutes: 600,
+                closeMinutes: 1200),
+        ],
+      );
+
+  Schedule copyWith({List<WorkingDay>? days, int? slotStepMinutes}) => Schedule(
+        days: days ?? this.days,
+        slotStepMinutes: slotStepMinutes ?? this.slotStepMinutes,
+      );
+}

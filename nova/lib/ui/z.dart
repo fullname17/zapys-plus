@@ -1017,3 +1017,58 @@ class _ZActionTileState extends State<ZActionTile> {
     );
   }
 }
+
+// ─────────────────────────────────────────── Тости
+
+/// Показ повідомлення знизу. Отримується з [zToaster] ДО await, тому лишається
+/// робочим після того, як лист закрився й його context помер.
+typedef ZToast = void Function(
+  String message, {
+  String? actionLabel,
+  VoidCallback? onAction,
+  Duration duration,
+});
+
+/// Повідомлення знизу в стилі застосунку: поверхня surface2, скруглення,
+/// акцентна дія, підняте над плаваючим нав-баром. Системний SnackBar сірий,
+/// прямокутний і лізе під нав-бар — у темному інтерфейсі це чужий елемент.
+///
+/// Беремо тостер на початку операції:
+/// `final toast = zToaster(context);` — і кличемо після збереження.
+ZToast zToaster(BuildContext context) {
+  final k = context.kavio;
+  final messenger = ScaffoldMessenger.of(context);
+  return (
+    String message, {
+    String? actionLabel,
+    VoidCallback? onAction,
+    Duration duration = const Duration(seconds: 5),
+  }) {
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: k.surface2,
+      elevation: 0,
+      duration: duration,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: k.line),
+      ),
+      content: Text(message,
+          style: AppTypography.body(k.ink)
+              .copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+      action: actionLabel == null
+          ? null
+          : SnackBarAction(
+              label: actionLabel,
+              textColor: k.accent,
+              onPressed: () {
+                zTap();
+                onAction?.call();
+              },
+            ),
+    ));
+  };
+}

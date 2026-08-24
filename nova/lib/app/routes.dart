@@ -15,6 +15,7 @@ abstract final class Routes {
   static const rebook = '/rebook';
   static const recap = '/recap';
   static const services = '/services';
+  static const schedule = '/schedule';
   static const profile = '/profile';
   static const settings = '/settings';
   static const subscription = '/subscription';

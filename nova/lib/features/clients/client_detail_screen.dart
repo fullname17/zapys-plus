@@ -12,6 +12,7 @@ import '../../ui/skeleton.dart';
 import '../../ui/z.dart';
 import '../calendar/calendar_screen.dart' show apptColor;
 import '../create/create_appointment_sheet.dart';
+import 'create_client_sheet.dart';
 
 /// Картка клієнта — «дороге» відчуття: аватар зі свіченням, теги, наступний
 /// запис, швидкі дії, LTV-hero, улюблені послуги, історія, нотатки.
@@ -36,7 +37,7 @@ class ClientDetailScreen extends ConsumerWidget {
           bottom: false,
           child: Column(
             children: [
-              _TopBar(),
+              _TopBar(client: client),
               const Expanded(child: ZSkeleton(child: ClientDetailSkeleton())),
             ],
           ),
@@ -84,7 +85,7 @@ class ClientDetailScreen extends ConsumerWidget {
         bottom: false,
         child: Column(
           children: [
-            _TopBar(),
+            const _TopBar(),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
@@ -126,9 +127,15 @@ class ClientDetailScreen extends ConsumerWidget {
 }
 
 class _TopBar extends StatelessWidget {
+  const _TopBar({this.client});
+
+  /// На екрані-скелеті клієнта ще немає — тоді кнопка редагування неактивна.
+  final Client? client;
+
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
+    final c = client;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Row(
@@ -144,12 +151,21 @@ class _TopBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-                color: k.surface2, borderRadius: BorderRadius.circular(12)),
-            child: Icon(Icons.more_horiz, color: k.ink2),
+          GestureDetector(
+            onTap: c == null
+                ? null
+                : () {
+                    zTap();
+                    showEditClientSheet(context, c);
+                  },
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                  color: k.surface2, borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.tune,
+                  size: 18, color: c == null ? k.ink3 : k.ink2),
+            ),
           ),
         ],
       ),

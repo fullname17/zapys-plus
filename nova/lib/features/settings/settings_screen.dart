@@ -84,6 +84,11 @@ class SettingsScreen extends ConsumerWidget {
                     child: Column(
                       children: [
                         _LinkRow(
+                            icon: Icons.calendar_month_outlined,
+                            title: t('Розклад'),
+                            divider: true,
+                            onTap: () => context.push(Routes.schedule)),
+                        _LinkRow(
                             icon: Icons.workspace_premium_outlined,
                             title: t('Підписка'),
                             onTap: () => context.push(Routes.subscription)),

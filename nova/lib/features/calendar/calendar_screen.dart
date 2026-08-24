@@ -33,8 +33,41 @@ DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 DateTime _weekStart(DateTime d) =>
     _dateOnly(d).subtract(Duration(days: d.weekday - 1));
 
-/// Колір запису за послугою: манікюр — iris, педикюр — зелений, інше — бурштин.
-Color apptColor(String serviceId) {
+/// Палітра груп послуг: кожна категорія отримує свій сталий колір, тож у
+/// календарі видно тип візиту без підпису. Базові б'юті-групи закріплені за
+/// звичними кольорами, решта розкладається по палітрі за назвою — так будь-яка
+/// сфера (тату, грумінг, автосервіс) одразу виглядає осмислено.
+const List<Color> _categoryPalette = [
+  Color(0xFF9A9AF6), // iris
+  Color(0xFF46D08A), // зелений
+  Color(0xFFE6B24E), // бурштин
+  Color(0xFFE86FA6), // рожевий
+  Color(0xFF5B8DEF), // синій
+  Color(0xFFB07CE8), // фіолетовий
+  Color(0xFF46C2D0), // бірюзовий
+];
+
+const Map<String, Color> _pinnedCategoryColors = {
+  'Манікюр': Color(0xFF9A9AF6),
+  'Педикюр': Color(0xFF46D08A),
+};
+
+Color _colorForCategory(String name) {
+  final pinned = _pinnedCategoryColors[name];
+  if (pinned != null) return pinned;
+  var hash = 0;
+  for (final unit in name.codeUnits) {
+    hash = (hash * 31 + unit) & 0x7fffffff;
+  }
+  return _categoryPalette[hash % _categoryPalette.length];
+}
+
+/// Колір запису. Спершу за групою послуги, далі — за id (демо-послуги сиду
+/// заведені до появи категорій у формі створення).
+Color apptColor(String serviceId, {String? category}) {
+  if (category != null && category.trim().isNotEmpty) {
+    return _colorForCategory(category.trim());
+  }
   if (serviceId.contains('gel') ||
       serviceId.contains('man') ||
       serviceId.contains('art')) {
@@ -148,8 +181,8 @@ class _DayView extends ConsumerWidget {
     // Скасовані записи та неявки місце не тримають — ні в лічильнику, ні у
     // вільних годинах: вікно реально вільне й на нього можна записати.
     final live = list.where((a) => a.isActive).toList(growable: false);
-    // Вільні години в межах 10:00–20:00.
-    final freeMin = _freeMinutes(live, day);
+    final schedule = scheduleOrFallback(ref);
+    final freeMin = _freeMinutes(live, day, schedule);
 
     void shift(int d) => ref.read(selectedDayProvider.notifier).state =
         _dateOnly(day).add(Duration(days: d));
@@ -197,76 +230,96 @@ class _DayView extends ConsumerWidget {
         if (list.isEmpty)
           _EmptyDay()
         else
-          ..._timeline(context, list, now, isToday),
+          ..._timeline(context, list, now, isToday, day, schedule),
       ],
     );
   }
 
-  int _freeMinutes(List<Appointment> list, DateTime day) {
-    final open = DateTime(day.year, day.month, day.day, 10);
-    final close = DateTime(day.year, day.month, day.day, 20);
-    var busy = 0;
+  /// Скільки годин дня ще вільні — у межах робочого дня майстра, з відрахунком
+  /// перерви. У вихідний вільних годин немає, а не «10».
+  int _freeMinutes(List<Appointment> list, DateTime day, Schedule schedule) {
+    final wd = schedule.forDate(day);
+    if (!wd.isOpen) return 0;
+    DateTime at(int m) =>
+        DateTime(day.year, day.month, day.day).add(Duration(minutes: m));
+    final open = at(wd.openMinutes);
+    final close = at(wd.closeMinutes);
+    final total = close.difference(open).inMinutes;
+
+    var busy = wd.hasBreak ? wd.breakEndMinutes! - wd.breakStartMinutes! : 0;
     for (final a in list) {
       final s = a.start.isBefore(open) ? open : a.start;
       final e = a.end.isAfter(close) ? close : a.end;
       if (e.isAfter(s)) busy += e.difference(s).inMinutes;
     }
-    return (close.difference(open).inMinutes - busy).clamp(0, 600);
+    return (total - busy).clamp(0, total);
   }
 
+  /// Стрічка дня: записи, вільні вікна й лінія «зараз» — усе строго за часом.
+  ///
+  /// Вільні вікна рахуємо тільки по живих записах (скасований візит місце не
+  /// тримає), але в список вставляємо за їхнім власним часом. Інакше вікно,
+  /// що відкрилося замість скасованого запису, з'їжджало вниз і опинялося
+  /// під карткою, яку воно замінює.
   List<Widget> _timeline(BuildContext context, List<Appointment> list,
-      DateTime now, bool isToday) {
+      DateTime now, bool isToday, DateTime day, Schedule schedule) {
     final items = [...list]..sort((a, b) => a.start.compareTo(b.start));
-    final widgets = <Widget>[];
-    var nowPlaced = !isToday;
-    DateTime? prevEnd;
-    var idx = 0;
+    final wd = schedule.forDate(day);
 
-    void maybeNow(DateTime before) {
-      final last = prevEnd;
-      if (!nowPlaced &&
-          now.isBefore(before) &&
-          (last == null || !now.isBefore(last))) {
-        widgets.add(StaggerReveal(index: idx++, child: _NowLine(time: now)));
-        nowPlaced = true;
-      }
+    // 1. Збираємо рядки з мітками часу, ще не малюючи.
+    final rows = <({DateTime at, int order, Widget child})>[];
+    for (final a in items) {
+      rows.add((
+        at: a.start,
+        order: 1,
+        child: _TimelineRow(time: Fmt.time(a.start), child: _ApptCard(a)),
+      ));
     }
 
-    for (final a in items) {
-      maybeNow(a.start);
-      final gapStart = prevEnd;
-      if (gapStart != null &&
-          a.isActive &&
-          a.start.difference(gapStart).inMinutes >= 40) {
-        widgets.add(StaggerReveal(
-          index: idx++,
+    if (wd.isOpen) {
+      DateTime at(int m) =>
+          DateTime(day.year, day.month, day.day).add(Duration(minutes: m));
+      final live = items.where((a) => a.isActive).toList();
+      var cursor = at(wd.openMinutes);
+      final close = at(wd.closeMinutes);
+
+      void gap(DateTime from, DateTime to) {
+        final minutes = to.difference(from).inMinutes;
+        if (minutes < 40) return;
+        rows.add((
+          at: from,
+          order: 0, // вікно йде перед карткою, що починається тієї ж хвилини
           child: _TimelineRow(
-            time: Fmt.time(gapStart),
+            time: Fmt.time(from),
             child: ZFreeSlot(
-              duration: Fmt.duration(a.start.difference(gapStart).inMinutes),
+              duration: Fmt.duration(minutes),
               // Тап по вікну відкриває лист уже на потрібному дні.
-              onTap: () => showCreateAppointmentSheet(context, at: gapStart),
+              onTap: () => showCreateAppointmentSheet(context, at: from),
             ),
           ),
         ));
       }
-      widgets.add(StaggerReveal(
-        index: idx++,
-        child: _TimelineRow(
-          time: Fmt.time(a.start),
-          child: _ApptCard(a),
-        ),
-      ));
-      // Скасований запис вікно не займає — наступний геп рахуємо від
-      // попереднього живого візиту.
-      if (a.isActive && (prevEnd == null || a.end.isAfter(prevEnd))) {
-        prevEnd = a.end;
+
+      for (final a in live) {
+        if (a.start.isAfter(cursor)) gap(cursor, a.start);
+        if (a.end.isAfter(cursor)) cursor = a.end;
       }
+      if (cursor.isBefore(close)) gap(cursor, close);
     }
-    if (!nowPlaced) {
-      widgets.add(StaggerReveal(index: idx++, child: _NowLine(time: now)));
+
+    if (isToday) {
+      rows.add((at: now, order: 2, child: _NowLine(time: now)));
     }
-    return widgets;
+
+    // 2. Сортуємо все за часом і лише тоді анімуємо появу.
+    rows.sort((a, b) {
+      final byTime = a.at.compareTo(b.at);
+      return byTime != 0 ? byTime : a.order.compareTo(b.order);
+    });
+    return [
+      for (var i = 0; i < rows.length; i++)
+        StaggerReveal(index: i, child: rows[i].child),
+    ];
   }
 }
 
@@ -309,7 +362,8 @@ class _ApptCard extends StatelessWidget {
     // гаснуть: колір послуги йде в сірий, картка притишується, час
     // закреслюється. Вікно при цьому вже вважається вільним.
     final active = a.isActive;
-    final c = active ? apptColor(a.service.id) : k.ink3;
+    final c =
+        active ? apptColor(a.service.id, category: a.service.category) : k.ink3;
     return GestureDetector(
       onTap: () => showAppointmentSheet(context, a),
       child: AnimatedOpacity(

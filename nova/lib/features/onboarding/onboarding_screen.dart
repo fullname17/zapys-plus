@@ -3,12 +3,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart' show markBooted;
 import '../../app/routes.dart';
+import '../../core/boot_uri.dart';
 import '../../core/localization/app_text.dart';
 import '../../design/theme.dart';
 import '../../ui/z.dart';
+import 'industry_step.dart';
 
-/// WOW-онбординг: 3 екрани з живими прев'ю головних цінностей. Плавні переходи,
-/// прогрес-крапки, фінальний «Почати» → головний екран.
+/// WOW-онбординг: 3 екрани з живими прев'ю головних цінностей, а після них —
+/// вибір сфери, який наповнює застосунок послугами майстра. Плавні переходи,
+/// прогрес-крапки, фінальний «Почати» → вибір сфери → головний екран.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
   @override
@@ -19,6 +22,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pc = PageController();
   int _page = 0;
 
+  /// Після цінностей показуємо вибір сфери — він має власну кнопку, тож
+  /// нижня панель онбордингу на цьому кроці ховається.
+  bool _pickingIndustry = bootParam('step') == 'industry';
+
   void _finish() {
     markBooted();
     context.go(Routes.home);
@@ -26,7 +33,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _next() {
     if (_page >= 2) {
-      _finish();
+      zTap();
+      setState(() => _pickingIndustry = true);
     } else {
       _pc.nextPage(
           duration: const Duration(milliseconds: 420),
@@ -66,6 +74,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             t('Один тап — і застосунок нагадає тим, хто давно не заходив.'),
       ),
     ];
+
+    if (_pickingIndustry) {
+      return Scaffold(
+        backgroundColor: k.canvas,
+        body: SafeArea(child: IndustryStep(onDone: _finish)),
+      );
+    }
 
     return Scaffold(
       backgroundColor: k.canvas,

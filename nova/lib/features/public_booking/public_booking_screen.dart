@@ -58,7 +58,20 @@ class _State extends ConsumerState<PublicBookingScreen> {
     });
   }
 
+  /// Показувати підказки під полями — лише після невдалої спроби, щоб не
+  /// лаяти клієнта до того, як він щось зробив.
+  bool _showErrors = false;
+
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Телефон — єдиний спосіб зв'язатися з клієнтом, тож без нього запис
+  /// не має сенсу. Приймаємо будь-який формат, але вимагаємо щонайменше
+  /// 9 цифр (український номер без коду країни).
+  static bool _phoneLooksReal(String raw) =>
+      raw.replaceAll(RegExp(r'[^0-9]'), '').length >= 9;
+
+  bool get _contactsValid =>
+      _name.text.trim().length >= 2 && _phoneLooksReal(_phone.text);
 
   @override
   void dispose() {
@@ -68,13 +81,18 @@ class _State extends ConsumerState<PublicBookingScreen> {
   }
 
   Future<void> _confirm() async {
+    // Захист від порожньої форми: раніше запис проходив із порожніми полями
+    // і майстер отримував «Гостя» без телефону.
+    if (!_contactsValid) {
+      HapticFeedback.heavyImpact();
+      setState(() => _showErrors = true);
+      return;
+    }
     HapticFeedback.mediumImpact();
     final svc = _service!, slot = _slot!;
     final id = 'g${slot.microsecondsSinceEpoch}';
     final client = Client(
-        id: 'gc_$id',
-        name: _name.text.trim().isEmpty ? 'Гість' : _name.text.trim(),
-        phone: _phone.text.trim());
+        id: 'gc_$id', name: _name.text.trim(), phone: _phone.text.trim());
     try {
       await ref.read(clientsRepositoryProvider).add(client);
     } catch (_) {}
@@ -357,15 +375,23 @@ class _State extends ConsumerState<PublicBookingScreen> {
               const SizedBox(height: 16),
               ZLabel(t('Контакти')),
               const SizedBox(height: 8),
-              _field(k, _name, t("Ваше ім'я"), Icons.person_outline),
+              _field(k, _name, t("Ваше ім'я"), Icons.person_outline,
+                  error: _showErrors && _name.text.trim().length < 2
+                      ? t("Вкажіть ім'я")
+                      : null),
               const SizedBox(height: 10),
               _field(k, _phone, t('Телефон'), Icons.phone_outlined,
-                  phone: true),
+                  phone: true,
+                  error: _showErrors && !_phoneLooksReal(_phone.text)
+                      ? t('Вкажіть номер телефону')
+                      : null),
               const SizedBox(height: 22),
-              ZButton(label: t('Підтвердити запис'), onTap: _confirm),
+              ZButton(
+                  label: t('Підтвердити запис'),
+                  onTap: _contactsValid ? _confirm : null),
               const SizedBox(height: 10),
               Center(
-                child: Text(t('Натискаючи, ви погоджуєтесь на нагадування'),
+                child: Text(t('Майстер зв’яжеться з вами для підтвердження'),
                     style: AppTypography.label(k.ink3).copyWith(fontSize: 11)),
               ),
             ],
@@ -411,7 +437,7 @@ class _State extends ConsumerState<PublicBookingScreen> {
                   textAlign: TextAlign.center,
                   style: AppTypography.body(k.ink2).copyWith(fontSize: 14)),
             const SizedBox(height: 8),
-            Text(t('Ми надішлемо нагадування перед візитом'),
+            Text(t('Майстер бачить ваш запис і підтвердить його'),
                 textAlign: TextAlign.center,
                 style: AppTypography.label(k.ink3).copyWith(fontSize: 13)),
             const SizedBox(height: 26),
@@ -506,34 +532,52 @@ class _State extends ConsumerState<PublicBookingScreen> {
       );
 
   Widget _field(
-          KavioColors k, TextEditingController c, String hint, IconData icon,
-          {bool phone = false}) =>
-      Container(
-        decoration: BoxDecoration(
-            color: k.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: k.line)),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: k.ink3),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: c,
-                keyboardType: phone ? TextInputType.phone : TextInputType.name,
-                style: AppTypography.body(k.ink).copyWith(fontSize: 15),
-                cursorColor: k.accent,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: hint,
-                  hintStyle: AppTypography.body(k.ink3).copyWith(fontSize: 15),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
+      KavioColors k, TextEditingController c, String hint, IconData icon,
+      {bool phone = false, String? error}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+              color: k.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: error == null ? k.line : k.danger)),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: error == null ? k.ink3 : k.danger),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: c,
+                  keyboardType:
+                      phone ? TextInputType.phone : TextInputType.name,
+                  // Кнопка «Підтвердити» вмикається просто під час набору.
+                  onChanged: (_) => setState(() {}),
+                  style: AppTypography.body(k.ink).copyWith(fontSize: 15),
+                  cursorColor: k.accent,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: hint,
+                    hintStyle:
+                        AppTypography.body(k.ink3).copyWith(fontSize: 15),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      );
+        if (error != null) ...[
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(error,
+                style: AppTypography.label(k.danger).copyWith(fontSize: 12)),
+          ),
+        ],
+      ],
+    );
+  }
 }

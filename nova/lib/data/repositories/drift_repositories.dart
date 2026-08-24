@@ -14,6 +14,12 @@ class DriftClientsRepository implements ClientsRepository {
 
   @override
   Future<void> add(Client client) => _db.addClient(client);
+
+  @override
+  Future<void> update(Client client) => _db.updateClient(client);
+
+  @override
+  Future<void> delete(String id) => _db.deleteClient(id);
 }
 
 class DriftServicesRepository implements ServicesRepository {
@@ -25,6 +31,12 @@ class DriftServicesRepository implements ServicesRepository {
 
   @override
   Future<void> add(Service service) => _db.addService(service);
+
+  @override
+  Future<void> update(Service service) => _db.updateService(service);
+
+  @override
+  Future<void> archive(String id) => _db.archiveService(id);
 }
 
 class DriftAppointmentsRepository implements AppointmentsRepository {
@@ -59,6 +71,17 @@ class DriftAppointmentsRepository implements AppointmentsRepository {
 
   @override
   Future<void> delete(String id) => _db.deleteAppointment(id);
+}
+
+class DriftScheduleRepository implements ScheduleRepository {
+  DriftScheduleRepository(this._db);
+  final AppDatabase _db;
+
+  @override
+  Stream<Schedule> watch() => _db.watchSchedule();
+
+  @override
+  Future<void> save(Schedule schedule) => _db.saveSchedule(schedule);
 }
 
 class DriftWorkspaceRepository implements WorkspaceRepository {

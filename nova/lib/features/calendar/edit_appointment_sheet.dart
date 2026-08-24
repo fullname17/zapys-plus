@@ -158,7 +158,8 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
   }
 
   Future<void> _save(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+    // Тостер беремо до await: контекст листа помре після pop.
+    final toast = zToaster(context);
     final navigator = Navigator.of(context);
     final repo = ref.read(appointmentsRepositoryProvider);
     final start = _slot ?? _a.start;
@@ -177,8 +178,7 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
     );
     if (!free) {
       HapticFeedback.heavyImpact();
-      messenger
-          .showSnackBar(SnackBar(content: Text(t('Цей час уже зайнятий'))));
+      toast(t('Цей час уже зайнятий'));
       setState(() => _slot = null);
       return;
     }
@@ -205,19 +205,17 @@ class _EditSheetState extends ConsumerState<_EditSheet> {
         : AnalyticsEvent.appointmentEdited);
     navigator.pop();
 
-    messenger.showSnackBar(SnackBar(
-      content: Text(widget.timeOnly
+    toast(
+      widget.timeOnly
           ? tp('Запис перенесено на {time}',
               {'time': '${Fmt.dayMonth(start)}, ${Fmt.time(start)}'})
-          : t('Зміни збережено')),
-      action: SnackBarAction(
-        label: t('Повернути'),
-        onPressed: () async {
-          await repo.update(was);
-          await cancelAppointmentReminders(ref, updated);
-          await scheduleAppointmentReminders(ref, was);
-        },
-      ),
-    ));
+          : t('Зміни збережено'),
+      actionLabel: t('Повернути'),
+      onAction: () async {
+        await repo.update(was);
+        await cancelAppointmentReminders(ref, updated);
+        await scheduleAppointmentReminders(ref, was);
+      },
+    );
   }
 }

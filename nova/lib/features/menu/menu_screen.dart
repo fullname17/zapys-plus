@@ -67,6 +67,8 @@ class MenuScreen extends ConsumerWidget {
                   () => context.push(Routes.clients)),
               _Item(Icons.design_services_outlined, t('Послуги та ціни'),
                   () => context.push(Routes.services)),
+              _Item(Icons.calendar_month_outlined, t('Розклад'),
+                  () => context.push(Routes.schedule)),
               _Item(Icons.auto_awesome_outlined, t('Розумні вікна'),
                   () => context.push(Routes.smartGaps)),
               _Item(Icons.link_outlined, t('Онлайн-запис'),
