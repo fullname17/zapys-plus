@@ -547,7 +547,8 @@ class _EmptyDay extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           ZButton(
-              label: t('＋ Новий запис'),
+              label: t('Новий запис'),
+              icon: Icons.add,
               expand: false,
               onTap: () => showCreateAppointmentSheet(context)),
         ],

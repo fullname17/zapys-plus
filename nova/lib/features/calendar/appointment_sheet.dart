@@ -58,7 +58,7 @@ class _AppointmentSheet extends ConsumerWidget {
         .read(analyticsServiceProvider)
         .track(AnalyticsEvent.appointmentStatusChanged('completed'));
     navigator.pop();
-    router.push(Routes.rebook);
+    router.push(Routes.rebookPath(appointment.id));
   }
 
   /// Скасування — м'яке: запис лишається в історії, але звільняє вікно.
@@ -315,7 +315,7 @@ class _AppointmentSheet extends ConsumerWidget {
         icon: Icons.auto_awesome,
         onTap: () {
           Navigator.of(context).pop();
-          GoRouter.of(context).push(Routes.rebook);
+          GoRouter.of(context).push(Routes.rebookPath(appointment.id));
         },
       );
     }

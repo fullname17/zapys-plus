@@ -325,6 +325,7 @@ class _SmartPreview extends StatelessWidget {
             const SizedBox(height: 10),
             ZButton(
                 label: t('Надіслати запрошення'),
+                decorative: true,
                 padding: const EdgeInsets.symmetric(vertical: 10)),
           ],
         ),

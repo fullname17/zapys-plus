@@ -5,6 +5,7 @@ import '../../core/localization/app_text.dart';
 import '../../core/services/subscriptions/entitlements.dart';
 import '../../data/providers.dart';
 import '../../design/theme.dart';
+import '../../ui/kavio_sheet.dart';
 import '../../ui/z.dart';
 
 /// Підписка. Поточний тариф — з currentPlanProvider (демо: Pro). Оплата —
@@ -143,7 +144,10 @@ class _PlanCard extends StatelessWidget {
         if (current)
           ZButtonSecondary(label: t('Поточний тариф'), expand: true)
         else
-          ZButton(label: tp('Обрати {name}', {'name': t(name)})),
+          ZButton(
+              label: tp('Обрати {name}', {'name': t(name)}),
+              onTap: () => showKavioSheet<void>(context,
+                  builder: (_) => _BillingSoon(plan: t(name)))),
       ],
     );
 
@@ -151,5 +155,36 @@ class _PlanCard extends StatelessWidget {
       return ZHero(orb: false, padding: const EdgeInsets.all(18), child: body);
     }
     return ZCard(padding: const EdgeInsets.all(18), child: body);
+  }
+}
+
+/// Оплата ще не підключена. Кнопка тарифу має працювати, але вигадувати
+/// списання ми не будемо — чесно кажемо, на якому етапі це з'явиться.
+class _BillingSoon extends StatelessWidget {
+  const _BillingSoon({required this.plan});
+  final String plan;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.kavio;
+    return KavioSheet(
+      title: tp('Тариф {name}', {'name': plan}),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            t('Оплата підключається до запуску. Зараз усі можливості відкриті — користуйтесь і кажіть, чого бракує.'),
+            style: AppTypography.body(k.ink2).copyWith(fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          ZButton(
+            label: t('Зрозуміло'),
+            onTap: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
   }
 }

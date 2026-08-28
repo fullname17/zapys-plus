@@ -6,6 +6,7 @@ import '../core/services/subscriptions/entitlements.dart';
 import '../core/time/demo_clock.dart';
 import '../domain/models.dart';
 import '../domain/repositories.dart';
+import '../features/create/schedule_picker.dart';
 import 'db/database.dart';
 import 'repositories/drift_repositories.dart';
 
@@ -210,3 +211,273 @@ DateTime _ceilTo15(DateTime t) {
   final r = t.add(Duration(minutes: add == 0 ? 15 : add));
   return DateTime(r.year, r.month, r.day, r.hour, r.minute);
 }
+
+/// Кількість візитів по клієнтах — щоб відрізнити новачка від постійного.
+final visitCountsProvider = StreamProvider<Map<String, int>>(
+    (ref) => ref.watch(databaseProvider).watchVisitCounts());
+
+/// Підсумок дня. Усе рахується з бази: раніше на цьому екрані були намальовані
+/// «▲ 12%», «4.9★» і «завтра 5 записів», однакові щовечора.
+@immutable
+class RecapData {
+  const RecapData({
+    required this.revenue,
+    required this.visits,
+    required this.newClients,
+    required this.busyMinutes,
+    required this.deltaPercent,
+    required this.tomorrowCount,
+    required this.tomorrowFirst,
+  });
+
+  final int revenue; // зароблено за завершеними візитами
+  final int visits; // скільки клієнтів прийшло
+  final int newClients; // з них уперше
+  final int busyMinutes; // скільки часу в кріслі
+  final int?
+      deltaPercent; // проти попереднього робочого дня; null — немає з чим
+  final int tomorrowCount; // записів на завтра
+  final DateTime? tomorrowFirst; // о котрій завтра починається день
+}
+
+final recapProvider = Provider<RecapData>((ref) {
+  final today = demoToday();
+  final tomorrow = today.add(const Duration(days: 1));
+  // Два тижні назад — вистачає, щоб знайти попередній робочий день.
+  final history = ref
+          .watch(rangeAppointmentsProvider((
+            start: today.subtract(const Duration(days: 14)),
+            end: tomorrow.add(const Duration(days: 1)),
+          )))
+          .value ??
+      const <Appointment>[];
+  final counts = ref.watch(visitCountsProvider).value ?? const <String, int>{};
+
+  bool sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  final todayDone = history
+      .where((a) => sameDay(a.start, today))
+      .where((a) => a.status == AppointmentStatus.completed)
+      .toList();
+  final todayLive =
+      history.where((a) => sameDay(a.start, today) && a.isActive).toList();
+
+  final revenue = todayDone.fold<int>(0, (s, a) => s + a.service.price);
+  final busy = todayDone.fold<int>(0, (s, a) => s + a.service.durationMinutes);
+  final newClients =
+      todayDone.where((a) => (counts[a.client.id] ?? 1) <= 1).length;
+
+  // Попередній день, коли взагалі були завершені візити.
+  int? delta;
+  for (var back = 1; back <= 14; back++) {
+    final day = today.subtract(Duration(days: back));
+    final done = history
+        .where((a) =>
+            sameDay(a.start, day) && a.status == AppointmentStatus.completed)
+        .toList();
+    if (done.isEmpty) continue;
+    final prev = done.fold<int>(0, (s, a) => s + a.service.price);
+    if (prev > 0) delta = (((revenue - prev) / prev) * 100).round();
+    break;
+  }
+
+  final tomorrowList = history
+      .where((a) => sameDay(a.start, tomorrow) && a.isActive)
+      .toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
+
+  return RecapData(
+    revenue: revenue,
+    visits: todayLive.length,
+    newClients: newClients,
+    busyMinutes: busy,
+    deltaPercent: delta,
+    tomorrowCount: tomorrowList.length,
+    tomorrowFirst: tomorrowList.isEmpty ? null : tomorrowList.first.start,
+  );
+});
+
+/// Історія візитів по клієнтах за півроку — база для «ритму» клієнта.
+final clientHistoryProvider = Provider<Map<String, List<Appointment>>>((ref) {
+  final today = demoToday();
+  final list = ref
+          .watch(rangeAppointmentsProvider((
+            start: today.subtract(const Duration(days: 180)),
+            end: today.add(const Duration(days: 1)),
+          )))
+          .value ??
+      const <Appointment>[];
+  final byClient = <String, List<Appointment>>{};
+  for (final a in list) {
+    if (!a.isActive) continue;
+    byClient.putIfAbsent(a.client.id, () => []).add(a);
+  }
+  for (final v in byClient.values) {
+    v.sort((a, b) => a.start.compareTo(b.start));
+  }
+  return byClient;
+});
+
+/// Ритм клієнта: скільки днів між візитами зазвичай. Медіана, а не середнє —
+/// один випадковий пропуск не має зсувати оцінку. null, якщо візит був один.
+int? clientCadenceDays(List<Appointment> visits) {
+  if (visits.length < 2) return null;
+  final gaps = <int>[];
+  for (var i = 1; i < visits.length; i++) {
+    final d = visits[i].start.difference(visits[i - 1].start).inDays;
+    if (d > 0) gaps.add(d);
+  }
+  if (gaps.isEmpty) return null;
+  gaps.sort();
+  return gaps[gaps.length ~/ 2].clamp(3, 120);
+}
+
+/// Кого запросити у вільне вікно.
+@immutable
+class GapCandidate {
+  const GapCandidate({
+    required this.client,
+    required this.service,
+    required this.daysSince,
+    required this.cadenceDays,
+    required this.overdueDays,
+  });
+
+  final Client client;
+  final Service service; // улюблена послуга клієнта
+  final int daysSince; // скільки днів не був
+  final int? cadenceDays; // як часто зазвичай ходить
+  final int overdueDays; // на скільки прострочив свій ритм
+}
+
+/// Вільні вікна сьогодні + кандидати, кого туди покликати.
+///
+/// Раніше цей екран показував вигадану Марію з «92% прийде». Тепер: реальні
+/// вікна дня, реальні клієнти, і замість вигаданого відсотка — факти
+/// («ходить кожні 3 тижні · не була 24 дні»).
+final smartGapsProvider = Provider<List<(DateTime, GapCandidate)>>((ref) {
+  final windows = ref.watch(dashboardProvider).freeWindows;
+  if (windows.isEmpty) return const [];
+
+  final history = ref.watch(clientHistoryProvider);
+  final now = demoNow();
+
+  final candidates = <GapCandidate>[];
+  for (final entry in history.entries) {
+    final visits = entry.value;
+    if (visits.isEmpty) continue;
+    final last = visits.last;
+    final daysSince = now.difference(last.start).inDays;
+    if (daysSince <= 0) continue; // сьогодні вже був
+
+    final cadence = clientCadenceDays(visits);
+    final overdue = cadence == null ? daysSince - 30 : daysSince - cadence;
+    if (overdue < 0) continue; // ще рано турбувати
+
+    // Улюблена послуга — найчастіша в історії.
+    final freq = <String, int>{};
+    for (final v in visits) {
+      freq[v.service.id] = (freq[v.service.id] ?? 0) + 1;
+    }
+    final favId = (freq.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value)))
+        .first
+        .key;
+    final fav = visits.lastWhere((v) => v.service.id == favId).service;
+
+    candidates.add(GapCandidate(
+      client: last.client,
+      service: fav,
+      daysSince: daysSince,
+      cadenceDays: cadence,
+      overdueDays: overdue,
+    ));
+  }
+
+  candidates.sort((a, b) => b.overdueDays.compareTo(a.overdueDays));
+  return [
+    for (var i = 0; i < windows.length && i < candidates.length; i++)
+      (windows[i], candidates[i]),
+  ];
+});
+
+/// Пропозиція «магічного перезапису»: коли записати клієнта наступного разу.
+@immutable
+class RebookSuggestion {
+  const RebookSuggestion({
+    required this.appointment,
+    required this.cadenceDays,
+    required this.slot,
+  });
+
+  final Appointment appointment; // щойно завершений візит
+  final int? cadenceDays; // ритм клієнта; null — це перший візит
+  final DateTime? slot; // найближче вільне вікно в цьому ритмі
+}
+
+/// Останній завершений сьогодні візит — на нього спирається екран перезапису,
+/// коли його відкрили з меню, а не одразу після оплати.
+final lastCompletedTodayProvider = Provider<Appointment?>((ref) {
+  final list =
+      ref.watch(dayAppointmentsProvider).value ?? const <Appointment>[];
+  final done = list
+      .where((a) => a.status == AppointmentStatus.completed)
+      .toList()
+    ..sort((a, b) => b.start.compareTo(a.start));
+  return done.isEmpty ? null : done.first;
+});
+
+/// Порахувати пропозицію для конкретного візиту: ритм клієнта + перше вільне
+/// вікно приблизно через стільки ж днів, у той самий час доби.
+final rebookSuggestionProvider =
+    Provider.family<RebookSuggestion?, String?>((ref, appointmentId) {
+  final today =
+      ref.watch(dayAppointmentsProvider).value ?? const <Appointment>[];
+  final base = appointmentId == null
+      ? ref.watch(lastCompletedTodayProvider)
+      : today.where((a) => a.id == appointmentId).firstOrNull ??
+          ref.watch(lastCompletedTodayProvider);
+  if (base == null) return null;
+
+  final history = ref.watch(clientHistoryProvider)[base.client.id] ?? const [];
+  final cadence = clientCadenceDays(history);
+  final schedule = ref.watch(scheduleProvider).value ?? Schedule.fallback;
+
+  // Шукаємо вікно навколо очікуваної дати: спершу в сам день, далі вперед.
+  final target = base.start.add(Duration(days: cadence ?? 21));
+  final from = DateTime(target.year, target.month, target.day);
+  final upcoming = ref
+          .watch(rangeAppointmentsProvider(
+              (start: from, end: from.add(const Duration(days: 14)))))
+          .value ??
+      const <Appointment>[];
+
+  DateTime? best;
+  for (var d = 0; d < 14 && best == null; d++) {
+    final day = from.add(Duration(days: d));
+    final dayAppts = upcoming
+        .where((a) =>
+            a.start.year == day.year &&
+            a.start.month == day.month &&
+            a.start.day == day.day)
+        .toList();
+    final slots = freeSlotsFor(
+      dayAppointments: dayAppts,
+      day: day,
+      durationMinutes: base.service.durationMinutes,
+      schedule: schedule,
+    );
+    if (slots.isEmpty) continue;
+    // Той самий час доби, що й зараз — клієнту звично.
+    final wanted = base.start.hour * 60 + base.start.minute;
+    slots.sort((a, b) {
+      final da = ((a.hour * 60 + a.minute) - wanted).abs();
+      final db = ((b.hour * 60 + b.minute) - wanted).abs();
+      return da.compareTo(db);
+    });
+    best = slots.first;
+  }
+
+  return RebookSuggestion(appointment: base, cadenceDays: cadence, slot: best);
+});

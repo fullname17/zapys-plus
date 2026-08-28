@@ -125,12 +125,17 @@ class ZButton extends StatefulWidget {
       this.onTap,
       this.icon,
       this.padding = const EdgeInsets.all(15),
-      this.expand = true});
+      this.expand = true,
+      this.decorative = false});
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
   final EdgeInsetsGeometry padding;
   final bool expand;
+
+  /// Кнопка всередині намальованого прев'ю (онбординг): натискати нічого, але
+  /// виглядати вона має живою — інакше макет читається як зламаний екран.
+  final bool decorative;
   @override
   State<ZButton> createState() => _ZButtonState();
 }
@@ -142,7 +147,7 @@ class _ZButtonState extends State<ZButton> {
     final k = context.kavio;
     // Кнопка без дії не має світитися як головна: гасне градієнт, зникає
     // свічення, текст іде в ink3. Підпис при цьому лишається підказкою.
-    final enabled = widget.onTap != null;
+    final enabled = widget.onTap != null || widget.decorative;
     final fg = enabled ? Colors.white : k.ink3;
     final child = AnimatedContainer(
       duration: const Duration(milliseconds: 200),

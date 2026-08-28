@@ -368,6 +368,21 @@ class AppDatabase extends _$AppDatabase {
         });
   }
 
+  /// Скільки візитів у кожного клієнта — щоб відрізнити новачка від постійного.
+  Stream<Map<String, int>> watchVisitCounts() {
+    final count = appointments.id.count();
+    final q = selectOnly(appointments)
+      ..addColumns([appointments.clientId, count])
+      ..where(appointments.status.isNotIn([
+        domain.AppointmentStatus.cancelled.name,
+        domain.AppointmentStatus.noShow.name,
+      ]))
+      ..groupBy([appointments.clientId]);
+    return q.watch().map((rows) => {
+          for (final r in rows) r.read(appointments.clientId)!: r.read(count)!,
+        });
+  }
+
   // --- Розклад ---
   /// Розклад одним запитом: рядки тижня + налаштування бізнесу (крок сітки).
   Stream<domain.Schedule> watchSchedule({String businessId = 'b1'}) {
@@ -731,6 +746,42 @@ class AppDatabase extends _$AppDatabase {
                     .add(const Duration(hours: 11)),
                 status: 'completed',
               ),
+          ]));
+
+      // Клієнти, які давно не приходили. Без них фішки «Розумні вікна» та
+      // інсайт «давно не були» не мали б кого показувати: у решти демо-клієнтів
+      // візит є вже сьогодні, тож кликати їх нікуди.
+      // (клієнт, послуга, ритм у днях, скільки днів тому був востаннє)
+      final lapsed = <(String, String, String, int, int)>[
+        ('cl_viktoria', 'Вікторія Лисенко', 'sv_gel', 21, 47),
+        ('cl_daryna', 'Дарина Гончар', 'sv_spa', 30, 68),
+        ('cl_alina', 'Аліна Романюк', 'sv_man', 28, 55),
+      ];
+      await batch((b) => b.insertAll(clients, [
+            for (var i = 0; i < lapsed.length; i++)
+              ClientsCompanion.insert(
+                id: lapsed[i].$1,
+                businessId: 'b1',
+                name: lapsed[i].$2,
+                phone: '+38067${(7770000 + i * 1111)}',
+                visitsCount: const Value(4),
+                totalSpent: const Value(200000),
+              ),
+          ]));
+      await batch((b) => b.insertAll(appointments, [
+            for (final c in lapsed)
+              for (var v = 0; v < 4; v++)
+                AppointmentsCompanion.insert(
+                  id: 'ap_${c.$1}_$v',
+                  businessId: 'b1',
+                  clientId: c.$1,
+                  serviceId: c.$3,
+                  staffId: const Value('st1'),
+                  startAt: base
+                      .subtract(Duration(days: c.$5 + v * c.$4))
+                      .add(const Duration(hours: 12)),
+                  status: 'completed',
+                ),
           ]));
     });
   }

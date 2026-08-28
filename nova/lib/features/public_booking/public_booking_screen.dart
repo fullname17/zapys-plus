@@ -446,7 +446,20 @@ class _State extends ConsumerState<PublicBookingScreen> {
               child: ZButtonSecondary(
                   label: t('Готово'),
                   expand: true,
-                  padding: const EdgeInsets.symmetric(vertical: 14)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  // Сторінка живе на телефоні клієнта: після запису повертаємо
+                  // її на початок, щоб можна було записатися ще раз.
+                  onTap: () {
+                    zTap();
+                    setState(() {
+                      _step = 0;
+                      _service = null;
+                      _slot = null;
+                      _name.clear();
+                      _phone.clear();
+                      _showErrors = false;
+                    });
+                  }),
             ),
           ],
         ),

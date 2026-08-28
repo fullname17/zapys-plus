@@ -138,8 +138,8 @@ GoRouter _buildRouter() {
               _springPage(const SmartGapsScreen())),
       GoRoute(
           path: Routes.rebook,
-          pageBuilder: (context, state) =>
-              _springPage(const MagicRebookScreen())),
+          pageBuilder: (context, state) => _springPage(MagicRebookScreen(
+              appointmentId: state.uri.queryParameters['a']))),
       GoRoute(
           path: Routes.recap,
           pageBuilder: (context, state) => _springPage(const RecapScreen())),

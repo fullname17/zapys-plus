@@ -34,6 +34,17 @@ abstract final class Fmt {
   static String range(DateTime start, DateTime end) =>
       '${_time.format(start)} – ${_time.format(end)}';
 
+  /// Хвилини → «3 год 20 хв» / «45 хв». Для підсумків, де години читаються
+  /// краще за «200 хв».
+  static String hours(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    final hLabel = gLang == 'en' ? 'h' : 'год';
+    if (h == 0) return duration(m);
+    if (m == 0) return '$h $hLabel';
+    return '$h $hLabel ${duration(m)}';
+  }
+
   static String duration(int minutes) =>
       '$minutes ${gLang == 'en' ? 'min' : gLang == 'ru' ? 'мин' : 'хв'}';
 

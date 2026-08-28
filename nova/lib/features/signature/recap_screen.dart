@@ -4,8 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/localization/app_text.dart';
 import '../../data/providers.dart';
 import '../../design/theme.dart';
+import 'package:flutter/services.dart';
+
 import '../../ui/format.dart';
 import '../../ui/z.dart';
+
+/// Текст підсумку для буфера обміну — коротко й по-людськи.
+String _summaryText(RecapData d) {
+  final parts = <String>[
+    '${t('Зароблено сьогодні')}: ${Fmt.money(d.revenue)}',
+    '${d.visits} ${tn(d.visits, 'клієнт', 'клієнти', 'клієнтів')}',
+    if (d.newClients > 0) '${d.newClients} ${t('уперше')}',
+    '${t('у кріслі')}: ${Fmt.hours(d.busyMinutes)}',
+    if (d.tomorrowCount > 0)
+      '${t('Завтра')}: ${d.tomorrowCount} ${tn(d.tomorrowCount, 'запис', 'записи', 'записів')}',
+  ];
+  return parts.join('\n');
+}
 
 /// Фішка «Підсумок дня»: щовечірній момент гордості — скільки зароблено,
 /// клієнтів, оцінка, і що на завтра. Live-дані сьогодні + шаринг.
@@ -15,7 +30,7 @@ class RecapScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final k = context.kavio;
-    final d = ref.watch(dashboardProvider);
+    final d = ref.watch(recapProvider);
     var i = 0;
     Widget reveal(Widget c) => StaggerReveal(index: i++, child: c);
 
@@ -77,17 +92,24 @@ class RecapScreen extends ConsumerWidget {
                                         AppTypography.display(k.ink))
                                     .copyWith(fontSize: 40)),
                             const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                ZPill('▲ 12%',
-                                    color: k.success, bg: k.successTint),
-                                const SizedBox(width: 8),
-                                Text(t('кращий вівторок місяця'),
-                                    style: AppTypography.label(k.ink3)
-                                        .copyWith(fontSize: 12)),
-                              ],
-                            ),
+                            if (d.deltaPercent != null)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ZPill(
+                                      '${d.deltaPercent! >= 0 ? '▲' : '▼'} ${d.deltaPercent!.abs()}%',
+                                      color: d.deltaPercent! >= 0
+                                          ? k.success
+                                          : k.danger,
+                                      bg: d.deltaPercent! >= 0
+                                          ? k.successTint
+                                          : k.dangerTint),
+                                  const SizedBox(width: 8),
+                                  Text(t('проти минулого робочого дня'),
+                                      style: AppTypography.label(k.ink3)
+                                          .copyWith(fontSize: 12)),
+                                ],
+                              ),
                           ],
                         ),
                       )),
@@ -96,9 +118,9 @@ class RecapScreen extends ConsumerWidget {
                         children: [
                           _tile(k, '${d.visits}', t('клієнтів')),
                           const SizedBox(width: 10),
-                          _tile(k, '4.9★', t('сер. оцінка')),
+                          _tile(k, '${d.newClients}', t('уперше')),
                           const SizedBox(width: 10),
-                          _tile(k, '2', t('нові')),
+                          _tile(k, Fmt.hours(d.busyMinutes), t('у кріслі')),
                         ],
                       )),
                       const SizedBox(height: 12),
@@ -119,10 +141,15 @@ class RecapScreen extends ConsumerWidget {
                                       style: const TextStyle(
                                           fontWeight: FontWeight.w800)),
                                   TextSpan(
-                                      text: t('5 записів, перший о 09:00. ')),
-                                  TextSpan(
-                                      text: t('1 вікно вільне.'),
-                                      style: TextStyle(color: k.accent)),
+                                      text: d.tomorrowCount == 0
+                                          ? t('записів немає — можна видихнути.')
+                                          : '${d.tomorrowCount} ${tn(d.tomorrowCount, 'запис', 'записи', 'записів')}, '),
+                                  if (d.tomorrowFirst != null)
+                                    TextSpan(
+                                        text: tp('перший о {time}.', {
+                                          'time': Fmt.time(d.tomorrowFirst!)
+                                        }),
+                                        style: TextStyle(color: k.accent)),
                                 ],
                               )),
                             ),
@@ -130,10 +157,21 @@ class RecapScreen extends ConsumerWidget {
                         ),
                       )),
                       const SizedBox(height: 18),
-                      reveal(ZButtonSecondary(
+                      reveal(Builder(builder: (context) {
+                        return ZButtonSecondary(
                           label: t('Поділитися підсумком'),
                           expand: true,
-                          padding: const EdgeInsets.symmetric(vertical: 14))),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          // Системного «поділитися» ще немає, тож кладемо текст
+                          // у буфер — його можна вставити куди завгодно.
+                          onTap: () {
+                            zTap();
+                            Clipboard.setData(
+                                ClipboardData(text: _summaryText(d)));
+                            zToaster(context)(t('Підсумок скопійовано'));
+                          },
+                        );
+                      })),
                     ],
                   ),
                 ),
@@ -150,9 +188,16 @@ class RecapScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(14),
           child: Column(
             children: [
-              Text(v,
-                  style: AppTypography.tabular(AppTypography.title1(k.ink))
-                      .copyWith(fontSize: 24)),
+              // «3 год 30 хв» довше за «7» — стискаємо, щоб плитки лишалися
+              // однаковими, а не роз'їжджалися по висоті.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(v,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: AppTypography.tabular(AppTypography.title1(k.ink))
+                        .copyWith(fontSize: 24)),
+              ),
               const SizedBox(height: 2),
               Text(l,
                   style: AppTypography.label(k.ink3).copyWith(fontSize: 11)),

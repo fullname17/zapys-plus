@@ -13,6 +13,7 @@ abstract final class Routes {
   static const splash = '/splash';
   static const onboarding = '/onboarding';
   static const rebook = '/rebook';
+  static String rebookPath(String appointmentId) => '/rebook?a=$appointmentId';
   static const recap = '/recap';
   static const services = '/services';
   static const schedule = '/schedule';
