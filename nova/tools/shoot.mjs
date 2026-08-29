@@ -28,6 +28,8 @@ const routes = [
   ['appointment-move', '/calendar?sheet=move&demo=1'],
   ['appointment-edit', '/calendar?sheet=edit&demo=1'],
   ['appointment-create', '/calendar?sheet=create&demo=1'],
+  ['appointment-deposit', '/calendar?sheet=deposit&demo=1'],
+  ['appointment-work', '/calendar?sheet=work&demo=1'],
   ['create-client', '/clients?sheet=client&demo=1'],
   ['create-service', '/services?sheet=service&demo=1'],
   ['analytics', '/analytics?demo=1'],
@@ -42,6 +44,8 @@ const routes = [
   ['book-confirm', '/book?step=confirm&demo=1'],
   ['book-done', '/book?step=done&demo=1'],
   ['smart-gaps', '/smart-gaps?demo=1'],
+  ['repeat-due', '/repeat?demo=1'],
+  ['backup', '/backup?demo=1'],
   ['menu', '/menu?demo=1'],
   ['settings', '/settings?demo=1'],
   // Скелетони: локальна БД віддає дані миттєво, тож стан завантаження

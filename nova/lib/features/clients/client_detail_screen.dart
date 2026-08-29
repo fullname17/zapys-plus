@@ -11,6 +11,7 @@ import '../../ui/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/z.dart';
 import '../calendar/calendar_screen.dart' show apptColor;
+import '../calendar/visit_photos.dart';
 import '../create/create_appointment_sheet.dart';
 import 'create_client_sheet.dart';
 
@@ -76,6 +77,15 @@ class ClientDetailScreen extends ConsumerWidget {
     final favs = byService.entries.toList()
       ..sort((a, b) => b.value.$2.compareTo(a.value.$2));
 
+    // Найсвіжіший візит, у якому взагалі щось записано.
+    Appointment? lastWork;
+    for (final a in past) {
+      if (a.params.isNotEmpty || (a.note?.isNotEmpty ?? false)) {
+        lastWork = a;
+        break;
+      }
+    }
+
     var i = 0;
     Widget reveal(Widget c) => StaggerReveal(index: i++, child: c);
 
@@ -102,6 +112,19 @@ class ClientDetailScreen extends ConsumerWidget {
                       ltv: client.totalSpent,
                       visits: client.visitsCount,
                       avg: avg)),
+                  const SizedBox(height: 16),
+                  // Що робили минулого разу: вигин і товщина вій, формула
+                  // кольору, номер лаку. Саме заради цього майстри й досі
+                  // носять паперовий зошит.
+                  if (lastWork != null) ...[
+                    reveal(ZLabel(t('Минулого разу'))),
+                    const SizedBox(height: 8),
+                    reveal(_LastWork(visit: lastWork)),
+                    const SizedBox(height: 16),
+                  ],
+                  reveal(ZLabel(t('Фото робіт'))),
+                  const SizedBox(height: 8),
+                  reveal(_Gallery(clientId: clientId)),
                   const SizedBox(height: 16),
                   if (favs.isNotEmpty) ...[
                     reveal(ZLabel(t('Улюблені послуги'))),
@@ -140,31 +163,27 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                  color: k.surface2, borderRadius: BorderRadius.circular(12)),
-              child: Icon(Icons.chevron_left, color: k.ink2),
-            ),
-          ),
+          const ZBackButton(),
           const Spacer(),
-          GestureDetector(
-            onTap: c == null
-                ? null
-                : () {
-                    zTap();
-                    showEditClientSheet(context, c);
-                  },
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                  color: k.surface2, borderRadius: BorderRadius.circular(12)),
-              child: Icon(Icons.tune,
-                  size: 18, color: c == null ? k.ink3 : k.ink2),
+          Semantics(
+            button: true,
+            enabled: c != null,
+            label: t('Редагувати клієнта'),
+            child: GestureDetector(
+              onTap: c == null
+                  ? null
+                  : () {
+                      zTap();
+                      showEditClientSheet(context, c);
+                    },
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                    color: k.surface2, borderRadius: BorderRadius.circular(12)),
+                child: Icon(Icons.tune,
+                    size: 18, color: c == null ? k.ink3 : k.ink2),
+              ),
             ),
           ),
         ],
@@ -300,24 +319,30 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    return GestureDetector(
-      onTap: a.$3,
-      child: ZCard(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                  color: k.accentTint, borderRadius: BorderRadius.circular(11)),
-              child: Icon(a.$1, size: 17, color: k.accent),
-            ),
-            const SizedBox(height: 5),
-            Text(a.$2,
-                style: AppTypography.label(k.ink2)
-                    .copyWith(fontSize: 11, fontWeight: FontWeight.w600)),
-          ],
+    return Semantics(
+      button: true,
+      label: a.$2,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: a.$3,
+        child: ZCard(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                    color: k.accentTint,
+                    borderRadius: BorderRadius.circular(11)),
+                child: Icon(a.$1, size: 17, color: k.accent),
+              ),
+              const SizedBox(height: 5),
+              Text(a.$2,
+                  style: AppTypography.label(k.ink2)
+                      .copyWith(fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          ),
         ),
       ),
     );
@@ -474,6 +499,110 @@ class _Notes extends StatelessWidget {
       child: Text(
         (note?.isNotEmpty ?? false) ? note! : t('Нотаток поки немає'),
         style: AppTypography.body(k.ink2).copyWith(fontSize: 13, height: 1.5),
+      ),
+    );
+  }
+}
+
+/// Параметри й нотатка останнього візиту — щоб не питати клієнта «а що ми
+/// робили минулого разу?».
+class _LastWork extends StatelessWidget {
+  const _LastWork({required this.visit});
+  final Appointment visit;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.kavio;
+    return ZCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${Fmt.dayMonth(visit.start)} · ${visit.service.name}',
+            style: AppTypography.label(k.ink3).copyWith(fontSize: 12),
+          ),
+          if (visit.params.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final e in visit.params.entries)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    decoration: BoxDecoration(
+                        color: k.surface2,
+                        borderRadius: BorderRadius.circular(999)),
+                    child: Text.rich(TextSpan(
+                      style: AppTypography.label(k.ink3).copyWith(fontSize: 12),
+                      children: [
+                        TextSpan(text: '${t(e.key)} '),
+                        TextSpan(
+                          text: e.value,
+                          style: TextStyle(
+                              color: k.ink, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    )),
+                  ),
+              ],
+            ),
+          ],
+          if (visit.note?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 10),
+            Text(visit.note!,
+                style: AppTypography.body(k.ink2)
+                    .copyWith(fontSize: 13, height: 1.5)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Галерея робіт клієнта — усі знімки з його візитів.
+class _Gallery extends ConsumerWidget {
+  const _Gallery({required this.clientId});
+  final String clientId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final k = context.kavio;
+    final photos =
+        ref.watch(clientPhotosProvider(clientId)).value ?? const <VisitPhoto>[];
+    if (photos.isEmpty) {
+      return ZCard(
+        child: Text(
+          t('Фото додаються в картці візиту — потім вони збираються тут.'),
+          style: AppTypography.body(k.ink2).copyWith(fontSize: 13),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 96,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
+        itemCount: photos.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) => Semantics(
+          button: true,
+          image: true,
+          label: tp('Фото роботи від {date}',
+              {'date': Fmt.dayMonth(photos[i].createdAt)}),
+          child: GestureDetector(
+            onTap: () {
+              zTap();
+              showPhotoViewer(context, photos[i]);
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child:
+                  SizedBox(width: 96, height: 96, child: photoImage(photos[i])),
+            ),
+          ),
+        ),
       ),
     );
   }

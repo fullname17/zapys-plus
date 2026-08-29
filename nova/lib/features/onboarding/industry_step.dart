@@ -43,7 +43,8 @@ class _IndustryStepState extends ConsumerState<IndustryStep> {
             e.category,
             e.service.name,
             e.service.durationMinutes,
-            e.service.price
+            e.service.price,
+            template.repeatAfterDays,
           ),
       ],
     );

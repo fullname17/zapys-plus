@@ -81,15 +81,19 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                   Expanded(
                       child: Text(t('Послуги'),
                           style: AppTypography.title1(k.ink))),
-                  GestureDetector(
-                    onTap: () => showCreateServiceSheet(context),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                          color: k.surface2,
-                          borderRadius: BorderRadius.circular(11)),
-                      child: Icon(Icons.add, color: k.accent, size: 20),
+                  Semantics(
+                    button: true,
+                    label: t('Нова послуга'),
+                    child: GestureDetector(
+                      onTap: () => showCreateServiceSheet(context),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                            color: k.surface2,
+                            borderRadius: BorderRadius.circular(11)),
+                        child: Icon(Icons.add, color: k.accent, size: 20),
+                      ),
                     ),
                   ),
                 ],
@@ -153,50 +157,69 @@ class _CategoryCard extends StatelessWidget {
       child: Column(
         children: [
           for (var i = 0; i < items.length; i++)
-            GestureDetector(
-              onTap: () {
-                zTap();
-                showEditServiceSheet(context, items[i]);
-              },
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                decoration: BoxDecoration(
-                  border:
-                      i == 0 ? null : Border(top: BorderSide(color: k.line)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                          color: apptColor(items[i].id,
-                              category: items[i].category),
-                          borderRadius: BorderRadius.circular(4)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(items[i].name,
-                              style: AppTypography.label(k.ink).copyWith(
-                                  fontSize: 14, fontWeight: FontWeight.w600)),
-                          Text(Fmt.duration(items[i].durationMinutes),
-                              style: AppTypography.label(k.ink3)
-                                  .copyWith(fontSize: 12)),
-                        ],
+            Semantics(
+              button: true,
+              label:
+                  '${items[i].name}, ${Fmt.duration(items[i].durationMinutes)}, ${Fmt.money(items[i].price)}',
+              excludeSemantics: true,
+              child: GestureDetector(
+                onTap: () {
+                  zTap();
+                  showEditServiceSheet(context, items[i]);
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  decoration: BoxDecoration(
+                    border:
+                        i == 0 ? null : Border(top: BorderSide(color: k.line)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                            color: apptColor(items[i].id,
+                                category: items[i].category),
+                            borderRadius: BorderRadius.circular(4)),
                       ),
-                    ),
-                    Text(Fmt.money(items[i].price),
-                        style: AppTypography.tabular(AppTypography.label(k.ink))
-                            .copyWith(
-                                fontSize: 14, fontWeight: FontWeight.w700)),
-                    const SizedBox(width: 10),
-                    Icon(Icons.chevron_right, size: 18, color: k.ink3),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(items[i].name,
+                                style: AppTypography.label(k.ink).copyWith(
+                                    fontSize: 14, fontWeight: FontWeight.w600)),
+                            Text(
+                                [
+                                  Fmt.duration(items[i].durationMinutes),
+                                  // Строк повтору видно одразу з каталогу —
+                                  // саме він наповнює «Пора на повтор».
+                                  if (items[i].repeatAfterDays != null)
+                                    tp('повтор через {n} {d}', {
+                                      'n': items[i].repeatAfterDays!,
+                                      'd': tn(items[i].repeatAfterDays!, 'день',
+                                          'дні', 'днів'),
+                                    }),
+                                ].join(' · '),
+                                style: AppTypography.label(k.ink3)
+                                    .copyWith(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      Text(Fmt.money(items[i].price),
+                          style:
+                              AppTypography.tabular(AppTypography.label(k.ink))
+                                  .copyWith(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 10),
+                      Icon(Icons.chevron_right, size: 18, color: k.ink3),
+                    ],
+                  ),
                 ),
               ),
             ),

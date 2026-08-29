@@ -12,7 +12,9 @@ import '../../ui/skeleton.dart';
 import '../../ui/z.dart';
 import '../create/create_appointment_sheet.dart';
 import 'appointment_sheet.dart';
+import 'deposit_sheet.dart';
 import 'edit_appointment_sheet.dart';
+import 'visit_details_sheet.dart';
 
 enum CalendarView { day, week, month }
 
@@ -93,7 +95,8 @@ class CalendarScreen extends ConsumerStatefulWidget {
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// Листи (картка запису, перенесення, редагування) — теж екрани продукту,
   /// тож їх треба звіряти з макетами. ?sheet=appointment|move|edit відкриває
-  /// потрібний лист на першому записі дня одразу після завантаження даних —
+  /// потрібний лист (а також deposit і work) на першому записі дня одразу
+  /// після завантаження даних —
   /// той самий механізм, що й ?view= для режимів календаря.
   bool _sheetOpened = false;
 
@@ -121,6 +124,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           showEditAppointmentSheet(context, a);
         case 'create':
           showCreateAppointmentSheet(context);
+        case 'deposit':
+          showDepositSheet(context, a);
+        case 'work':
+          showVisitDetailsSheet(context, a);
       }
     });
   }
@@ -203,9 +210,15 @@ class _DayView extends ConsumerWidget {
                 ],
               ),
             ),
-            _RoundBtn(icon: Icons.chevron_left, onTap: () => shift(-1)),
+            _RoundBtn(
+                icon: Icons.chevron_left,
+                label: t('Попередній день'),
+                onTap: () => shift(-1)),
             const SizedBox(width: 8),
-            _RoundBtn(icon: Icons.chevron_right, onTap: () => shift(1)),
+            _RoundBtn(
+                icon: Icons.chevron_right,
+                label: t('Наступний день'),
+                onTap: () => shift(1)),
           ],
         ),
         const SizedBox(height: 14),
@@ -364,80 +377,115 @@ class _ApptCard extends StatelessWidget {
     final active = a.isActive;
     final c =
         active ? apptColor(a.service.id, category: a.service.category) : k.ink3;
-    return GestureDetector(
-      onTap: () => showAppointmentSheet(context, a),
-      child: AnimatedOpacity(
-        opacity: active ? 1 : 0.55,
-        duration: const Duration(milliseconds: 220),
-        curve: Motion.enter,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: const Alignment(-0.8, -1),
-                    end: const Alignment(0.8, 1),
-                    colors: [
-                      c.withValues(alpha: active ? 0.18 : 0.10),
-                      c.withValues(alpha: active ? 0.07 : 0.04),
+    return Semantics(
+      button: true,
+      label: [
+        Fmt.range(a.start, a.end),
+        a.client.name,
+        a.service.name,
+        Fmt.money(a.service.price),
+        if (a.hasDeposit)
+          tp('передоплата {sum}', {'sum': Fmt.money(a.depositMinor)}),
+        if (!active) t(a.status.label),
+      ].join(', '),
+      child: GestureDetector(
+        onTap: () => showAppointmentSheet(context, a),
+        child: AnimatedOpacity(
+          opacity: active ? 1 : 0.55,
+          duration: const Duration(milliseconds: 220),
+          curve: Motion.enter,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: const Alignment(-0.8, -1),
+                      end: const Alignment(0.8, 1),
+                      colors: [
+                        c.withValues(alpha: active ? 0.18 : 0.10),
+                        c.withValues(alpha: active ? 0.07 : 0.04),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: c.withValues(alpha: active ? 0.28 : 0.18),
+                        width: 1),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(15, 12, 13, 12),
+                  child: Row(
+                    children: [
+                      ZAvatar(
+                          initials: a.client.initials,
+                          size: 30,
+                          color: c,
+                          bg: c.withValues(alpha: 0.18)),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(a.client.name,
+                                style: AppTypography.title3(k.ink).copyWith(
+                                  fontSize: 14,
+                                  decoration: active
+                                      ? null
+                                      : TextDecoration.lineThrough,
+                                  decorationColor: k.ink3,
+                                )),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                      active
+                                          ? '${a.service.name} · ${Fmt.duration(a.service.durationMinutes)}'
+                                          : '${a.service.name} · ${t(a.status.label)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.label(k.ink2)
+                                          .copyWith(fontSize: 12)),
+                                ),
+                                // Внесена передоплата має бути видна одразу з
+                                // таймлайну: це головний захист від неявки.
+                                if (a.hasDeposit && active) ...[
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.savings_outlined,
+                                      size: 12, color: k.success),
+                                  const SizedBox(width: 3),
+                                  Text(Fmt.money(a.depositMinor),
+                                      style: AppTypography.tabular(
+                                              AppTypography.label(k.success))
+                                          .copyWith(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700)),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(Fmt.money(a.service.price),
+                          style:
+                              AppTypography.tabular(AppTypography.title3(k.ink))
+                                  .copyWith(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      decoration: active
+                                          ? null
+                                          : TextDecoration.lineThrough,
+                                      decorationColor: k.ink3)),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: c.withValues(alpha: active ? 0.28 : 0.18),
-                      width: 1),
                 ),
-                padding: const EdgeInsets.fromLTRB(15, 12, 13, 12),
-                child: Row(
-                  children: [
-                    ZAvatar(
-                        initials: a.client.initials,
-                        size: 30,
-                        color: c,
-                        bg: c.withValues(alpha: 0.18)),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(a.client.name,
-                              style: AppTypography.title3(k.ink).copyWith(
-                                fontSize: 14,
-                                decoration:
-                                    active ? null : TextDecoration.lineThrough,
-                                decorationColor: k.ink3,
-                              )),
-                          Text(
-                              active
-                                  ? '${a.service.name} · ${Fmt.duration(a.service.durationMinutes)}'
-                                  : '${a.service.name} · ${t(a.status.label)}',
-                              style: AppTypography.label(k.ink2)
-                                  .copyWith(fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    Text(Fmt.money(a.service.price),
-                        style:
-                            AppTypography.tabular(AppTypography.title3(k.ink))
-                                .copyWith(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    decoration: active
-                                        ? null
-                                        : TextDecoration.lineThrough,
-                                    decorationColor: k.ink3)),
-                  ],
-                ),
-              ),
-              Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(width: 3, color: c)),
-            ],
+                Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(width: 3, color: c)),
+              ],
+            ),
           ),
         ),
       ),
@@ -496,20 +544,28 @@ class _NowLine extends StatelessWidget {
 }
 
 class _RoundBtn extends StatelessWidget {
-  const _RoundBtn({required this.icon, required this.onTap});
+  const _RoundBtn(
+      {required this.icon, required this.onTap, required this.label});
   final IconData icon;
   final VoidCallback onTap;
+
+  /// Підпис для екранного диктора: сама по собі стрілка нічого не каже.
+  final String label;
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-            color: k.surface2, borderRadius: BorderRadius.circular(11)),
-        child: Icon(icon, size: 18, color: k.ink2),
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+              color: k.surface2, borderRadius: BorderRadius.circular(11)),
+          child: Icon(icon, size: 18, color: k.ink2),
+        ),
       ),
     );
   }

@@ -22,5 +22,7 @@ abstract final class Routes {
   static const subscription = '/subscription';
   static const onlineBooking = '/online-booking';
   static const smartGaps = '/smart-gaps';
+  static const repeatDue = '/repeat';
+  static const backup = '/backup';
   static const publicBooking = '/book';
 }

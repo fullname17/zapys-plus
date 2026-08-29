@@ -89,6 +89,11 @@ class SettingsScreen extends ConsumerWidget {
                             divider: true,
                             onTap: () => context.push(Routes.schedule)),
                         _LinkRow(
+                            icon: Icons.backup_outlined,
+                            title: t('Резервна копія'),
+                            divider: true,
+                            onTap: () => context.push(Routes.backup)),
+                        _LinkRow(
                             icon: Icons.workspace_premium_outlined,
                             title: t('Підписка'),
                             onTap: () => context.push(Routes.subscription)),
@@ -118,21 +123,11 @@ class SettingsScreen extends ConsumerWidget {
 class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final k = context.kavio;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                  color: k.surface2, borderRadius: BorderRadius.circular(12)),
-              child: Icon(Icons.chevron_left, color: k.ink2),
-            ),
-          ),
+          ZBackButton(),
         ],
       ),
     );

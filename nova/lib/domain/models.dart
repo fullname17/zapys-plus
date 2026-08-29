@@ -76,6 +76,7 @@ class Service {
     required this.durationMinutes,
     required this.price,
     this.category,
+    this.repeatAfterDays,
   });
 
   final String id;
@@ -83,6 +84,47 @@ class Service {
   final int durationMinutes;
   final int price;
   final String? category;
+
+  /// Через скільки днів послугу зазвичай повторюють: корекція вій, оновлення
+  /// кольору, наступна чистка. null — послуга разова.
+  final int? repeatAfterDays;
+
+  Service copyWith({
+    String? name,
+    int? durationMinutes,
+    int? price,
+    String? category,
+    int? repeatAfterDays,
+    bool clearRepeat = false,
+  }) =>
+      Service(
+        id: id,
+        name: name ?? this.name,
+        durationMinutes: durationMinutes ?? this.durationMinutes,
+        price: price ?? this.price,
+        category: category ?? this.category,
+        repeatAfterDays:
+            clearRepeat ? null : (repeatAfterDays ?? this.repeatAfterDays),
+      );
+}
+
+/// Фото роботи. Знімок живе в базі як data-URI — застосунок офлайн-first,
+/// хмарного сховища ще немає.
+@immutable
+class VisitPhoto {
+  const VisitPhoto({
+    required this.id,
+    required this.appointmentId,
+    required this.clientId,
+    required this.dataUri,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String appointmentId;
+  final String clientId;
+  final String dataUri;
+  final DateTime createdAt;
 }
 
 @immutable
@@ -114,6 +156,9 @@ class Appointment {
     required this.status,
     this.staff,
     this.resource,
+    this.depositMinor = 0,
+    this.note,
+    this.params = const {},
   });
 
   final String id;
@@ -124,6 +169,25 @@ class Appointment {
   final Staff? staff;
   final Resource? resource;
 
+  /// Передоплата в мінімальних одиницях. Позначка «гроші отримано наперед» —
+  /// застосунок нічого не проводить і не переказує.
+  final int depositMinor;
+
+  /// Нотатка до візиту: що робили і як пройшло.
+  final String? note;
+
+  /// Параметри роботи: вигин і товщина вій, формула кольору, номер лаку —
+  /// набір полів залежить від сфери майстра.
+  final Map<String, String> params;
+
+  /// Скільки лишилося доплатити на місці.
+  int get dueMinor {
+    final left = service.price - depositMinor;
+    return left < 0 ? 0 : left;
+  }
+
+  bool get hasDeposit => depositMinor > 0;
+
   DateTime get end => start.add(Duration(minutes: service.durationMinutes));
 
   Appointment copyWith({
@@ -133,6 +197,9 @@ class Appointment {
     DateTime? start,
     Staff? staff,
     Resource? resource,
+    int? depositMinor,
+    String? note,
+    Map<String, String>? params,
   }) =>
       Appointment(
         id: id,
@@ -142,6 +209,9 @@ class Appointment {
         status: status ?? this.status,
         staff: staff ?? this.staff,
         resource: resource ?? this.resource,
+        depositMinor: depositMinor ?? this.depositMinor,
+        note: note ?? this.note,
+        params: params ?? this.params,
       );
 
   /// Запис «живий» — займає час у розкладі. Скасовані та неявки місце не

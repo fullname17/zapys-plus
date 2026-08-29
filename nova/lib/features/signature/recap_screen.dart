@@ -48,20 +48,10 @@ class RecapScreen extends ConsumerWidget {
             bottom: false,
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
                   child: Row(children: [
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).maybePop(),
-                      child: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                            color: k.surface2,
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Icon(Icons.chevron_left, color: k.ink2),
-                      ),
-                    ),
+                    ZBackButton(),
                   ]),
                 ),
                 Expanded(

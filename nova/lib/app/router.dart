@@ -11,9 +11,11 @@ import '../features/profile/profile_screen.dart';
 import '../features/public_booking/public_booking_screen.dart';
 import '../features/signature/magic_rebook_screen.dart';
 import '../features/signature/recap_screen.dart';
+import '../features/signature/repeat_due_screen.dart';
 import '../features/signature/smart_gaps_screen.dart';
 import '../features/schedule/schedule_screen.dart';
 import '../features/services/services_screen.dart';
+import '../features/settings/backup_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/subscription/subscription_screen.dart';
@@ -140,6 +142,13 @@ GoRouter _buildRouter() {
           path: Routes.rebook,
           pageBuilder: (context, state) => _springPage(MagicRebookScreen(
               appointmentId: state.uri.queryParameters['a']))),
+      GoRoute(
+          path: Routes.repeatDue,
+          pageBuilder: (context, state) =>
+              _springPage(const RepeatDueScreen())),
+      GoRoute(
+          path: Routes.backup,
+          pageBuilder: (context, state) => _springPage(const BackupScreen())),
       GoRoute(
           path: Routes.recap,
           pageBuilder: (context, state) => _springPage(const RecapScreen())),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/routes.dart';
 import '../../core/localization/app_text.dart';
 import '../../data/providers.dart';
 import '../../design/theme.dart';
@@ -21,6 +23,7 @@ class HomeScreen extends ConsumerWidget {
     final k = context.kavio;
     final day = ref.watch(dayAppointmentsProvider);
     final d = ref.watch(dashboardProvider);
+    final repeatDue = ref.watch(repeatDueProvider).where((r) => r.isDue).length;
     final now = DateTime.now();
 
     var i = 0;
@@ -105,8 +108,30 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 14),
               ],
 
-              // Інсайт повернення.
-              reveal(_InsightCard(count: d.lapsedCount)),
+              // Інсайти повернення. Обидва ведуть на свій екран — раніше
+              // картка виглядала як кнопка, але нічого не робила.
+              if (d.lapsedCount > 0)
+                reveal(_InsightCard(
+                  icon: Icons.auto_awesome,
+                  tone: k.success,
+                  text: tp('{n} {c} давно не були — запросити?', {
+                    'n': d.lapsedCount,
+                    'c': tn(d.lapsedCount, 'клієнт', 'клієнти', 'клієнтів'),
+                  }),
+                  onTap: () => context.push(Routes.smartGaps),
+                )),
+              if (repeatDue > 0) ...[
+                if (d.lapsedCount > 0) const SizedBox(height: 10),
+                reveal(_InsightCard(
+                  icon: Icons.replay,
+                  tone: k.warning,
+                  text: tp('{n} {c} — пора на повтор', {
+                    'n': repeatDue,
+                    'c': tn(repeatDue, 'клієнт', 'клієнти', 'клієнтів'),
+                  }),
+                  onTap: () => context.push(Routes.repeatDue),
+                )),
+              ],
             ],
           ),
         ),
@@ -246,38 +271,68 @@ class _DashChipPainter extends CustomPainter {
   bool shouldRepaint(_DashChipPainter oldDelegate) => false;
 }
 
+/// Підказка дня: коротка думка застосунку і перехід туди, де з нею щось
+/// можна зробити.
 class _InsightCard extends StatelessWidget {
-  const _InsightCard({required this.count});
-  final int count;
+  const _InsightCard({
+    required this.icon,
+    required this.text,
+    required this.tone,
+    required this.onTap,
+  });
+
+  /// Іконка, а не емодзі: шрифт емодзі CanvasKit тягне з мережі, і на повільному
+  /// з'єднанні на його місці кілька секунд стоїть порожній квадрат.
+  final IconData icon;
+  final String text;
+  final Color tone;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0x1A46D08A), Color(0xFF151519)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: k.line, width: 1),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      child: Row(
-        children: [
-          const Text('✨', style: TextStyle(fontSize: 18)),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Text(
-              tp('{n} клієнти давно не були — запросити?', {'n': count}),
-              style: AppTypography.body(k.ink).copyWith(fontSize: 13),
+    return Semantics(
+      button: true,
+      label: text,
+      child: GestureDetector(
+        onTap: () {
+          zTap();
+          onTap();
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [tone.withValues(alpha: 0.08), k.surface],
             ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: k.line, width: 1),
           ),
-          const SizedBox(width: 8),
-          Text(t('Так'),
-              style: AppTypography.label(k.success)
-                  .copyWith(fontSize: 13, fontWeight: FontWeight.w700)),
-        ],
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: tone.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 16, color: tone),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(text,
+                    style: AppTypography.body(k.ink).copyWith(fontSize: 13)),
+              ),
+              const SizedBox(width: 8),
+              Text(t('Показати'),
+                  style: AppTypography.label(tone)
+                      .copyWith(fontSize: 13, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
       ),
     );
   }

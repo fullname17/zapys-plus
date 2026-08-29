@@ -502,17 +502,22 @@ class _State extends ConsumerState<PublicBookingScreen> {
         padding: const EdgeInsets.fromLTRB(12, 8, 20, 8),
         child: Row(
           children: [
-            GestureDetector(
-              onTap: () {
-                zTap();
-                back();
-              },
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                    color: k.surface2, borderRadius: BorderRadius.circular(12)),
-                child: Icon(Icons.chevron_left, color: k.ink2),
+            Semantics(
+              button: true,
+              label: t('Назад'),
+              child: GestureDetector(
+                onTap: () {
+                  zTap();
+                  back();
+                },
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                      color: k.surface2,
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Icon(Icons.chevron_left, color: k.ink2),
+                ),
               ),
             ),
             const SizedBox(width: 12),

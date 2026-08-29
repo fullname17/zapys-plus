@@ -42,6 +42,7 @@ class IndustryTemplate {
     required this.color,
     required this.categories,
     this.notifications = const IndustryNotificationDefaults(),
+    this.repeatAfterDays,
   });
 
   final String id;
@@ -52,6 +53,12 @@ class IndustryTemplate {
   final Color color;
   final List<ServiceCategoryTemplate> categories;
   final IndustryNotificationDefaults notifications;
+
+  /// Через скільки днів у цій сфері зазвичай повертаються: корекція вій,
+  /// оновлення кольору, наступна чистка. Застосунок підставляє це число всім
+  /// послугам шаблону — майстер потім міняє кожну під себе. null — сфера
+  /// разових візитів (фотограф, тату), нагадувати нема про що.
+  final int? repeatAfterDays;
 
   /// Плоский список услуг (для сидирования).
   List<({String category, ServiceTemplate service})> get flatServices => [
@@ -71,6 +78,7 @@ abstract final class IndustryCatalog {
     // — Ядро: вії, брови, нігті —
     IndustryTemplate(
       id: 'lashes',
+      repeatAfterDays: 21,
       title: 'Вії',
       icon: Icons.remove_red_eye_outlined,
       color: Color(0xFF9A9AF6),
@@ -88,6 +96,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'brows',
+      repeatAfterDays: 30,
       title: 'Брови',
       icon: Icons.brush_outlined,
       color: Color(0xFFB07CE8),
@@ -101,6 +110,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'nails',
+      repeatAfterDays: 21,
       title: 'Нігті',
       icon: Icons.back_hand_outlined,
       color: Color(0xFFE86FA6),
@@ -119,6 +129,7 @@ abstract final class IndustryCatalog {
     // — Волосся й обличчя —
     IndustryTemplate(
       id: 'hair',
+      repeatAfterDays: 45,
       title: 'Перукар / колорист',
       icon: Icons.content_cut_outlined,
       color: Color(0xFF5B8DEF),
@@ -135,6 +146,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'barber',
+      repeatAfterDays: 21,
       title: 'Барбершоп',
       icon: Icons.content_cut,
       color: Color(0xFF5B5BD6),
@@ -161,6 +173,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'cosmetology',
+      repeatAfterDays: 30,
       title: 'Косметолог',
       icon: Icons.spa_outlined,
       color: Color(0xFF46D08A),
@@ -174,6 +187,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'depilation',
+      repeatAfterDays: 30,
       title: 'Депіляція',
       icon: Icons.waves_outlined,
       color: Color(0xFF46C2D0),
@@ -187,6 +201,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'permanent',
+      repeatAfterDays: 365,
       title: 'Перманентний макіяж',
       icon: Icons.colorize_outlined,
       color: Color(0xFFB07CE8),
@@ -213,6 +228,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'massage',
+      repeatAfterDays: 14,
       title: 'Масаж і СПА',
       icon: Icons.self_improvement_outlined,
       color: Color(0xFF46D08A),
@@ -227,6 +243,7 @@ abstract final class IndustryCatalog {
     // — Поруч: ті самі болі —
     IndustryTemplate(
       id: 'trainer',
+      repeatAfterDays: 7,
       title: 'Тренер / йога',
       icon: Icons.fitness_center_outlined,
       color: Color(0xFFE6B24E),
@@ -239,6 +256,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'tutor',
+      repeatAfterDays: 7,
       title: 'Репетитор / логопед',
       icon: Icons.menu_book_outlined,
       color: Color(0xFF5B8DEF),
@@ -251,6 +269,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'psy',
+      repeatAfterDays: 14,
       title: 'Психолог / коуч',
       icon: Icons.record_voice_over_outlined,
       color: Color(0xFF6E56CF),
@@ -263,6 +282,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'grooming',
+      repeatAfterDays: 60,
       title: 'Грумінг',
       icon: Icons.pets_outlined,
       color: Color(0xFFD98324),
@@ -288,6 +308,7 @@ abstract final class IndustryCatalog {
     ),
     IndustryTemplate(
       id: 'auto',
+      repeatAfterDays: 180,
       title: 'Автосервіс / детейлінг',
       icon: Icons.directions_car_outlined,
       color: Color(0xFF3E7BFA),

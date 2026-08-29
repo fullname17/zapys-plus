@@ -60,30 +60,24 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
               padding: const EdgeInsets.fromLTRB(12, 8, 20, 4),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).maybePop(),
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                          color: k.surface2,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Icon(Icons.chevron_left, color: k.ink2),
-                    ),
-                  ),
+                  const ZBackButton(),
                   const SizedBox(width: 10),
                   Expanded(
                       child: Text(t('Клієнти'),
                           style: AppTypography.title1(k.ink))),
-                  GestureDetector(
-                    onTap: () => showCreateClientSheet(context),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                          color: k.surface2,
-                          borderRadius: BorderRadius.circular(11)),
-                      child: Icon(Icons.add, color: k.accent, size: 20),
+                  Semantics(
+                    button: true,
+                    label: t('Новий клієнт'),
+                    child: GestureDetector(
+                      onTap: () => showCreateClientSheet(context),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                            color: k.surface2,
+                            borderRadius: BorderRadius.circular(11)),
+                        child: Icon(Icons.add, color: k.accent, size: 20),
+                      ),
                     ),
                   ),
                 ],
@@ -190,39 +184,45 @@ class _ClientTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: ZCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            Hero(
-              tag: 'client-${client.id}',
-              child: ZAvatar(initials: client.initials, size: 44),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(client.name,
-                      style:
-                          AppTypography.title3(k.ink).copyWith(fontSize: 15)),
-                  const SizedBox(height: 1),
-                  Text(
-                      '${client.visitsCount} ${t('візитів')} · ${client.phone}',
-                      style:
-                          AppTypography.label(k.ink3).copyWith(fontSize: 12)),
-                ],
+    return Semantics(
+      button: true,
+      label:
+          '${client.name}, ${client.visitsCount} ${t('візитів')}, ${Fmt.money(client.totalSpent)}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ZCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Hero(
+                tag: 'client-${client.id}',
+                child: ZAvatar(initials: client.initials, size: 44),
               ),
-            ),
-            Text(Fmt.money(client.totalSpent),
-                style: AppTypography.tabular(AppTypography.title3(k.ink))
-                    .copyWith(fontSize: 14, fontWeight: FontWeight.w800)),
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right, size: 18, color: k.ink3),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(client.name,
+                        style:
+                            AppTypography.title3(k.ink).copyWith(fontSize: 15)),
+                    const SizedBox(height: 1),
+                    Text(
+                        '${client.visitsCount} ${t('візитів')} · ${client.phone}',
+                        style:
+                            AppTypography.label(k.ink3).copyWith(fontSize: 12)),
+                  ],
+                ),
+              ),
+              Text(Fmt.money(client.totalSpent),
+                  style: AppTypography.tabular(AppTypography.title3(k.ink))
+                      .copyWith(fontSize: 14, fontWeight: FontWeight.w800)),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, size: 18, color: k.ink3),
+            ],
+          ),
         ),
       ),
     );

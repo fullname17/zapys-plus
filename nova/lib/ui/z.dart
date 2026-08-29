@@ -169,21 +169,28 @@ class _ZButtonState extends State<ZButton> {
         ],
       ),
     );
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _down = true),
-      onTapUp: (_) => setState(() => _down = false),
-      onTapCancel: () => setState(() => _down = false),
-      onTap: widget.onTap == null
-          ? null
-          : () {
-              HapticFeedback.lightImpact();
-              widget.onTap!();
-            },
-      child: AnimatedScale(
-        scale: _down ? 0.96 : 1,
-        duration: const Duration(milliseconds: 110),
-        curve: Curves.easeOut,
-        child: child,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.label,
+      // Підпис уже названо тут — інакше екранний диктор прочитає його двічі.
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
+        onTap: widget.onTap == null
+            ? null
+            : () {
+                HapticFeedback.lightImpact();
+                widget.onTap!();
+              },
+        child: AnimatedScale(
+          scale: _down ? 0.96 : 1,
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          child: child,
+        ),
       ),
     );
   }
@@ -203,16 +210,48 @@ class ZButtonSecondary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: expand ? double.infinity : null,
-        padding: padding,
-        alignment: Alignment.center,
-        decoration: FX.buttonSecondary(k),
-        child: Text(label,
-            style: AppTypography.title3(k.ink)
-                .copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: expand ? double.infinity : null,
+          padding: padding,
+          alignment: Alignment.center,
+          decoration: FX.buttonSecondary(k),
+          child: Text(label,
+              style: AppTypography.title3(k.ink)
+                  .copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Кнопка «назад» у шапці екрана. Була скопійована в кожен _TopBar окремо —
+/// разом із тим, що для екранного диктора вона лишалася безіменним квадратом.
+class ZBackButton extends StatelessWidget {
+  const ZBackButton({super.key, this.onTap});
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.kavio;
+    return Semantics(
+      button: true,
+      label: t('Назад'),
+      child: GestureDetector(
+        onTap: onTap ?? () => Navigator.of(context).maybePop(),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+              color: k.surface2, borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.chevron_left, color: k.ink2),
+        ),
       ),
     );
   }
@@ -970,51 +1009,57 @@ class _ZActionTileState extends State<ZActionTile> {
     final k = context.kavio;
     final tone = widget.tone ?? k.accent;
     final enabled = widget.onTap != null;
-    return GestureDetector(
-      onTapDown: enabled ? (_) => setState(() => _down = true) : null,
-      onTapUp: enabled ? (_) => setState(() => _down = false) : null,
-      onTapCancel: enabled ? () => setState(() => _down = false) : null,
-      onTap: enabled
-          ? () {
-              HapticFeedback.lightImpact();
-              widget.onTap!();
-            }
-          : null,
-      child: AnimatedScale(
-        scale: _down ? 0.94 : 1,
-        duration: const Duration(milliseconds: 110),
-        curve: Curves.easeOut,
-        child: Opacity(
-          opacity: enabled ? 1 : 0.4,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: k.surface2,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: k.line),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: tone.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(11),
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTapDown: enabled ? (_) => setState(() => _down = true) : null,
+        onTapUp: enabled ? (_) => setState(() => _down = false) : null,
+        onTapCancel: enabled ? () => setState(() => _down = false) : null,
+        onTap: enabled
+            ? () {
+                HapticFeedback.lightImpact();
+                widget.onTap!();
+              }
+            : null,
+        child: AnimatedScale(
+          scale: _down ? 0.94 : 1,
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          child: Opacity(
+            opacity: enabled ? 1 : 0.4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: k.surface2,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: k.line),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: tone.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(widget.icon, size: 18, color: tone),
                   ),
-                  alignment: Alignment.center,
-                  child: Icon(widget.icon, size: 18, color: tone),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  widget.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.label(k.ink2)
-                      .copyWith(fontSize: 11.5, fontWeight: FontWeight.w600),
-                ),
-              ],
+                  const SizedBox(height: 7),
+                  Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.label(k.ink2)
+                        .copyWith(fontSize: 11.5, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

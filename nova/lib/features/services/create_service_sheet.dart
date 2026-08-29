@@ -50,6 +50,7 @@ class _ServiceSheetState extends ConsumerState<_ServiceSheet> {
     _duration = TextEditingController(text: '${e?.durationMinutes ?? 60}');
     _price = TextEditingController(
         text: e == null ? '' : '${(e.price / 100).round()}');
+    _repeatAfterDays = e?.repeatAfterDays;
     if (e?.category != null) _categoryId = e!.category!;
   }
 
@@ -63,6 +64,10 @@ class _ServiceSheetState extends ConsumerState<_ServiceSheet> {
 
   static const _durationPresets = [30, 45, 60, 90];
   static const _pricePresets = [350, 500, 650, 750];
+
+  /// Через скільки днів послугу зазвичай повторюють. null — послуга разова.
+  int? _repeatAfterDays;
+  static const _repeatPresets = [14, 21, 28, 45, 60];
 
   @override
   void dispose() {
@@ -94,6 +99,7 @@ class _ServiceSheetState extends ConsumerState<_ServiceSheet> {
       durationMinutes: _minutes,
       price: _major * 100,
       category: _categoryId,
+      repeatAfterDays: _repeatAfterDays,
     );
 
     if (_isEdit) {
@@ -273,6 +279,54 @@ class _ServiceSheetState extends ConsumerState<_ServiceSheet> {
             selected: _major,
             format: (v) => Fmt.money(v * 100),
             onPick: (v) => setState(() => _price.text = '$v'),
+          )),
+          const SizedBox(height: 18),
+
+          // Ритм послуги. З нього застосунок сам збирає список «кого пора
+          // кликати» — раніше майстер тримав ці строки в голові.
+          reveal(ZLabel(t('Повторювати через'))),
+          const SizedBox(height: 8),
+          reveal(Text(
+            t('Через скільки днів клієнту зазвичай треба на цю послугу знову.'),
+            style: AppTypography.label(k.ink3).copyWith(fontSize: 12),
+          )),
+          const SizedBox(height: 10),
+          reveal(Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ZChip(
+                selected: _repeatAfterDays == null,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                onTap: () {
+                  zTap();
+                  setState(() => _repeatAfterDays = null);
+                },
+                child: Text(
+                  t('Не нагадувати'),
+                  style: AppTypography.label(
+                          _repeatAfterDays == null ? Colors.white : k.ink2)
+                      .copyWith(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+              for (final d in _repeatPresets)
+                ZChip(
+                  selected: _repeatAfterDays == d,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  onTap: () {
+                    zTap();
+                    setState(() => _repeatAfterDays = d);
+                  },
+                  child: Text(
+                    '$d ${tn(d, 'день', 'дні', 'днів')}',
+                    style: AppTypography.tabular(AppTypography.label(
+                            _repeatAfterDays == d ? Colors.white : k.ink2))
+                        .copyWith(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+            ],
           )),
           const SizedBox(height: 22),
 

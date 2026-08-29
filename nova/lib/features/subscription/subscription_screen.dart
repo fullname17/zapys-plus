@@ -49,17 +49,7 @@ class SubscriptionScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(12, 8, 20, 4),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).maybePop(),
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                          color: k.surface2,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Icon(Icons.chevron_left, color: k.ink2),
-                    ),
-                  ),
+                  const ZBackButton(),
                   const SizedBox(width: 10),
                   Text(t('Тарифи'), style: AppTypography.title1(k.ink)),
                 ],

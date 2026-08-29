@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -91,6 +93,10 @@ class Services extends Table {
   /// Прихована послуга: зникає з каталогу й нових записів, але минулі візити
   /// на неї лишаються цілими.
   BoolColumn get archived => boolean().withDefault(const Constant(false))();
+
+  /// Через скільки днів послугу треба повторити (корекція, оновлення,
+  /// профілактика). null — послуга разова, нагадувати нема про що.
+  IntColumn get repeatAfterDays => integer().nullable()();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -132,6 +138,31 @@ class Appointments extends Table {
   TextColumn get resourceId => text().nullable()();
   DateTimeColumn get startAt => dateTime()();
   TextColumn get status => text()(); // AppointmentStatus.name
+
+  /// Передоплата в мінімальних одиницях валюти. Це просто позначка «гроші
+  /// отримано» — застосунок їх не проводить і нікуди не переказує.
+  IntColumn get depositMinor => integer().withDefault(const Constant(0))();
+
+  /// Нотатка до візиту: що робили, чим, як пройшло.
+  TextColumn get note => text().nullable()();
+
+  /// Параметри роботи у форматі JSON {"Вигин":"D","Товщина":"0.07"} — набір
+  /// полів залежить від сфери майстра.
+  TextColumn get params => text().nullable()();
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Фото роботи. Зберігаємо як data-URI прямо в базі: застосунок офлайн-first,
+/// окремого файлового сховища ще немає, а знімки стискаються при виборі.
+@DataClassName('VisitPhotoRow')
+class VisitPhotos extends Table {
+  TextColumn get id => text()();
+  TextColumn get businessId => text()();
+  TextColumn get appointmentId => text()();
+  TextColumn get clientId => text()();
+  TextColumn get dataUri => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -146,7 +177,8 @@ class Appointments extends Table {
     Services,
     Clients,
     Resources,
-    Appointments
+    Appointments,
+    VisitPhotos
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -164,7 +196,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -180,6 +212,14 @@ class AppDatabase extends _$AppDatabase {
             for (final b in rows) {
               await _seedWorkingHours(b.id);
             }
+          }
+          if (from < 3) {
+            // Передоплата, нотатка й параметри візиту, повтор послуги, фото.
+            await m.addColumn(appointments, appointments.depositMinor);
+            await m.addColumn(appointments, appointments.note);
+            await m.addColumn(appointments, appointments.params);
+            await m.addColumn(services, services.repeatAfterDays);
+            await m.createTable(visitPhotos);
           }
         },
       );
@@ -216,7 +256,24 @@ class AppDatabase extends _$AppDatabase {
         durationMinutes: r.durationMinutes,
         price: r.price,
         category: categoryName,
+        repeatAfterDays: r.repeatAfterDays,
       );
+
+  /// Параметри візиту зберігаються рядком JSON. Якщо він зіпсований — краще
+  /// показати візит без параметрів, ніж уронити весь календар.
+  Map<String, String> _decodeParams(String? raw) {
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final map = jsonDecode(raw);
+      if (map is! Map) return const {};
+      return {
+        for (final e in map.entries)
+          if (e.value != null) '${e.key}': '${e.value}',
+      };
+    } on FormatException {
+      return const {};
+    }
+  }
 
   domain.Staff _toStaff(StaffRow r) =>
       domain.Staff(id: r.id, name: r.name, role: r.role);
@@ -239,6 +296,9 @@ class AppDatabase extends _$AppDatabase {
         resource: res == null ? null : _toResource(res),
         start: a.startAt,
         status: domain.AppointmentStatus.values.byName(a.status),
+        depositMinor: a.depositMinor,
+        note: a.note,
+        params: _decodeParams(a.params),
       );
 
   // --- Запросы ---
@@ -315,8 +375,15 @@ class AppDatabase extends _$AppDatabase {
       resourceId: Value(a.resource?.id),
       startAt: a.start,
       status: a.status.name,
+      depositMinor: Value(a.depositMinor),
+      note: Value(a.note),
+      params: Value(_encodeParams(a.params)),
     ));
   }
+
+  /// Порожня мапа — це null у базі, щоб не тримати рядок «{}» у кожному записі.
+  String? _encodeParams(Map<String, String> p) =>
+      p.isEmpty ? null : jsonEncode(p);
 
   /// Редагування запису: клієнт, послуга, час, виконавець, ресурс і статус.
   /// id незмінний, тож історія клієнта та заплановані нагадування лишаються
@@ -330,6 +397,26 @@ class AppDatabase extends _$AppDatabase {
         resourceId: Value(a.resource?.id),
         startAt: Value(a.start),
         status: Value(a.status.name),
+        depositMinor: Value(a.depositMinor),
+        note: Value(a.note),
+        params: Value(_encodeParams(a.params)),
+      ),
+    );
+  }
+
+  /// Передоплата — це позначка «гроші отримано наперед», не платіж.
+  Future<void> setAppointmentDeposit(String id, int minor) {
+    return (update(appointments)..where((t) => t.id.equals(id)))
+        .write(AppointmentsCompanion(depositMinor: Value(minor)));
+  }
+
+  /// Нотатка й параметри роботи: що робили і якими матеріалами.
+  Future<void> setAppointmentDetails(
+      String id, String? note, Map<String, String> params) {
+    return (update(appointments)..where((t) => t.id.equals(id))).write(
+      AppointmentsCompanion(
+        note: Value(note == null || note.trim().isEmpty ? null : note.trim()),
+        params: Value(_encodeParams(params)),
       ),
     );
   }
@@ -476,6 +563,7 @@ class AppDatabase extends _$AppDatabase {
         durationMinutes: Value(s.durationMinutes),
         price: Value(s.price),
         categoryId: Value(categoryId),
+        repeatAfterDays: Value(s.repeatAfterDays),
       ),
     );
   }
@@ -513,6 +601,7 @@ class AppDatabase extends _$AppDatabase {
       name: s.name,
       durationMinutes: s.durationMinutes,
       price: s.price,
+      repeatAfterDays: Value(s.repeatAfterDays),
     ));
   }
 
@@ -531,7 +620,9 @@ class AppDatabase extends _$AppDatabase {
       await into(businesses).insert(BusinessesCompanion.insert(
         id: 'b1',
         name: 'Манікюрна студія',
-        industry: const Value('beauty'),
+        // Сфера з каталогу IndustryCatalog: від неї залежать поля параметрів
+        // візиту (форма, довжина, колір), а не лише набір послуг.
+        industry: const Value('nails'),
         currency: const Value('UAH'),
         timeZone: const Value('Europe/Kyiv'),
       ));
@@ -566,6 +657,7 @@ class AppDatabase extends _$AppDatabase {
               businessId: 'b1',
               categoryId: const Value('cat_man'),
               name: 'Класичний манікюр',
+              repeatAfterDays: const Value(28),
               durationMinutes: 30,
               price: 35000),
           ServicesCompanion.insert(
@@ -573,6 +665,7 @@ class AppDatabase extends _$AppDatabase {
               businessId: 'b1',
               categoryId: const Value('cat_man'),
               name: 'Гель-лак',
+              repeatAfterDays: const Value(21),
               durationMinutes: 45,
               price: 50000),
           ServicesCompanion.insert(
@@ -580,6 +673,7 @@ class AppDatabase extends _$AppDatabase {
               businessId: 'b1',
               categoryId: const Value('cat_man'),
               name: 'Нейл-арт',
+              repeatAfterDays: const Value(21),
               durationMinutes: 60,
               price: 75000),
           ServicesCompanion.insert(
@@ -587,6 +681,7 @@ class AppDatabase extends _$AppDatabase {
               businessId: 'b1',
               categoryId: const Value('cat_ped'),
               name: 'Spa-педикюр',
+              repeatAfterDays: const Value(45),
               durationMinutes: 60,
               price: 65000),
           ServicesCompanion.insert(
@@ -594,6 +689,7 @@ class AppDatabase extends _$AppDatabase {
               businessId: 'b1',
               categoryId: const Value('cat_ped'),
               name: 'Експрес-педикюр',
+              repeatAfterDays: const Value(35),
               durationMinutes: 35,
               price: 45000),
         ]);
@@ -689,6 +785,10 @@ class AppDatabase extends _$AppDatabase {
                 serviceId: 'sv_gel',
                 staffId: const Value('st1'),
                 startAt: at(13, 30),
+                note: const Value(
+                    'Нігті короткі, кутикула суха — порадила олійку.'),
+                params: const Value(
+                    '{"Форма":"Мигдаль","Довжина":"Коротка","Колір":"OPI 112"}'),
                 status: 'completed'),
             AppointmentsCompanion.insert(
                 id: uid('5'),
@@ -697,6 +797,7 @@ class AppDatabase extends _$AppDatabase {
                 serviceId: 'sv_gel',
                 staffId: const Value('st1'),
                 startAt: at(14, 45),
+                depositMinor: const Value(20000),
                 status: 'confirmed'),
             AppointmentsCompanion.insert(
                 id: uid('6'),
@@ -786,12 +887,81 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Сфера майстра ('lashes', 'nails', …). Від неї залежать поля візиту.
+  Stream<String> watchIndustry({String businessId = 'b1'}) {
+    final q = select(businesses)..where((t) => t.id.equals(businessId));
+    return q.watchSingleOrNull().map((r) => r?.industry ?? 'other');
+  }
+
+  // --- Фото робіт ---
+  /// Фото одного візиту, найновіші зверху.
+  Stream<List<domain.VisitPhoto>> watchAppointmentPhotos(String appointmentId) {
+    final q = select(visitPhotos)
+      ..where((t) => t.appointmentId.equals(appointmentId))
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
+    return q.watch().map((rows) => rows.map(_toPhoto).toList());
+  }
+
+  /// Уся галерея клієнта — щоб перед візитом бачити, що робили минулого разу.
+  Stream<List<domain.VisitPhoto>> watchClientPhotos(String clientId) {
+    final q = select(visitPhotos)
+      ..where((t) => t.clientId.equals(clientId))
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
+    return q.watch().map((rows) => rows.map(_toPhoto).toList());
+  }
+
+  domain.VisitPhoto _toPhoto(VisitPhotoRow r) => domain.VisitPhoto(
+        id: r.id,
+        appointmentId: r.appointmentId,
+        clientId: r.clientId,
+        dataUri: r.dataUri,
+        createdAt: r.createdAt,
+      );
+
+  Future<void> addPhoto(domain.VisitPhoto p, {String businessId = 'b1'}) {
+    return into(visitPhotos).insert(VisitPhotosCompanion.insert(
+      id: p.id,
+      businessId: businessId,
+      appointmentId: p.appointmentId,
+      clientId: p.clientId,
+      dataUri: p.dataUri,
+      createdAt: Value(p.createdAt),
+    ));
+  }
+
+  Future<void> deletePhoto(String id) =>
+      (delete(visitPhotos)..where((t) => t.id.equals(id))).go();
+
+  // --- Резервна копія ---
+  /// Уся база одним знімком. Кожна таблиця — список рядків у власному вигляді
+  /// drift (`toJson`), тож формат читає і людина, і майбутній імпорт.
+  Future<Map<String, dynamic>> exportAll() async {
+    Future<List<Map<String, dynamic>>>
+        dump<T extends HasResultSet, R extends DataClass>(
+                ResultSetImplementation<T, R> table) async =>
+            (await select(table).get()).map((r) => r.toJson()).toList();
+
+    return {
+      'businesses': await dump(businesses),
+      'workingHours': await dump(workingHours),
+      'locations': await dump(locations),
+      'staff': await dump(staffMembers),
+      'serviceCategories': await dump(serviceCategories),
+      'services': await dump(services),
+      'clients': await dump(clients),
+      'resources': await dump(resources),
+      'appointments': await dump(appointments),
+      'photos': await dump(visitPhotos),
+    };
+  }
+
   /// Применяет отраслевой шаблон: задаёт индустрию бизнеса и наполняет каталог
   /// категориями и услугами. Идемпотентно — заменяет прежний каталог, поэтому
-  /// смена сферы не плодит дубли. `seeds`: (категория, название, минуты, цена).
+  /// смена сферы не плодит дубли.
+  /// `seeds`: (категорія, назва, хвилини, ціна, повтор_днів).
   Future<void> applyIndustryTemplate(
     String industryId,
-    List<(String, String, int, int)> seeds, {
+    List<(String, String, int, int, int?)> seeds, {
     String businessId = 'b1',
   }) async {
     await transaction(() async {
@@ -831,6 +1001,7 @@ class AppDatabase extends _$AppDatabase {
             name: seed.$2,
             durationMinutes: seed.$3,
             price: seed.$4,
+            repeatAfterDays: Value(seed.$5),
           ),
       ];
       await batch((b) => b.insertAll(services, rows));

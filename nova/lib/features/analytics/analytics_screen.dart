@@ -1,10 +1,11 @@
 import '../../core/localization/app_text.dart';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/providers.dart';
+import '../../data/analytics_providers.dart';
 import '../../design/theme.dart';
 import '../../ui/format.dart';
 import '../../ui/z.dart';
@@ -18,12 +19,12 @@ class AnalyticsScreen extends ConsumerStatefulWidget {
 }
 
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
-  int _period = 0; // Сьогодні за замовчуванням
+  AnalyticsPeriod _period = AnalyticsPeriod.today;
 
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    final d = ref.watch(dashboardProvider);
+    final d = ref.watch(analyticsProvider(_period));
     var i = 0;
     Widget reveal(Widget c) => StaggerReveal(index: i++, child: c);
 
@@ -52,25 +53,20 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             const SizedBox(height: 14),
             reveal(ZSegmented(
               items: [t('Сьогодні'), t('Тиждень'), t('Місяць'), t('Рік')],
-              index: _period,
+              index: _period.index,
               onChanged: (v) {
                 zTap();
-                setState(() => _period = v);
+                setState(() => _period = AnalyticsPeriod.values[v]);
               },
             )),
             const SizedBox(height: 14),
-            reveal(_RevenueHero(
-              today: _period == 0,
-              todayRevenue: d.revenue,
-              todayVisits: d.visits,
-              freeWindows: d.freeWindows.length,
-            )),
+            reveal(_RevenueHero(period: _period, d: d)),
             const SizedBox(height: 12),
-            reveal(const _KpiGrid()),
+            reveal(_KpiGrid(d: d)),
             const SizedBox(height: 12),
-            reveal(const _Heatmap()),
+            reveal(_Heatmap(d: d)),
             const SizedBox(height: 12),
-            reveal(const _TopServices()),
+            reveal(_TopServices(d: d)),
           ],
         ),
       ),
@@ -79,40 +75,41 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 }
 
 class _RevenueHero extends StatelessWidget {
-  const _RevenueHero({
-    required this.today,
-    required this.todayRevenue,
-    required this.todayVisits,
-    required this.freeWindows,
-  });
-  final bool today;
-  final int todayRevenue, todayVisits, freeWindows;
+  const _RevenueHero({required this.period, required this.d});
+  final AnalyticsPeriod period;
+  final AnalyticsData d;
 
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
+    final delta = d.deltaPercent;
     return ZHero(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ZLabel(today ? t('Виручка · сьогодні') : t('Виручка · липень'),
+          ZLabel('${t('Виручка')} · ${t(periodTitleKey(period))}',
               color: k.ink2),
-          Text(today ? Fmt.money(todayRevenue) : '₴182 400',
+          Text(Fmt.money(d.revenue),
               style: AppTypography.tabular(AppTypography.display(k.ink))
                   .copyWith(fontSize: 36, height: 1.05)),
           const SizedBox(height: 6),
           Row(
             children: [
-              ZPill(today ? '▲ 12%' : '▲ 18%',
-                  color: k.success, bg: k.successTint),
-              const SizedBox(width: 8),
+              if (delta != null) ...[
+                ZPill('${delta >= 0 ? '▲' : '▼'} ${delta.abs()}%',
+                    color: delta >= 0 ? k.success : k.danger,
+                    bg: delta >= 0 ? k.successTint : k.dangerTint),
+                const SizedBox(width: 8),
+              ],
               Flexible(
                 child: Text(
-                    today
-                        ? tp('{v} записів · {w} вільних вікон',
-                            {'v': todayVisits, 'w': freeWindows})
-                        : t('проти ₴154 600 у червні'),
+                    delta == null
+                        ? tp('{v} записів', {'v': d.visits})
+                        : tp('проти {sum} · {p}', {
+                            'sum': Fmt.money(d.prevRevenue),
+                            'p': t(prevPeriodKey(period)),
+                          }),
                     style: AppTypography.label(k.ink3).copyWith(fontSize: 12)),
               ),
             ],
@@ -120,16 +117,17 @@ class _RevenueHero extends StatelessWidget {
           const SizedBox(height: 10),
           SizedBox(
             height: 96,
-            child:
-                CustomPaint(size: Size.infinite, painter: _AreaChartPainter()),
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _AreaChartPainter(cur: d.series, prev: d.prevSeries),
+            ),
           ),
           const SizedBox(height: 6),
           Row(
             children: [
-              _Legend(
-                  dashed: false, label: today ? t('сьогодні') : t('липень')),
+              _Legend(dashed: false, label: t(periodTitleKey(period))),
               const SizedBox(width: 14),
-              _Legend(dashed: true, label: today ? t('вчора') : t('червень')),
+              _Legend(dashed: true, label: t(prevPeriodKey(period))),
             ],
           ),
         ],
@@ -183,8 +181,11 @@ class _LineSwatch extends CustomPainter {
 }
 
 class _AreaChartPainter extends CustomPainter {
-  static const cur = [0.31, 0.4, 0.36, 0.58, 0.52, 0.73, 0.69, 0.9];
-  static const prev = [0.25, 0.3, 0.23, 0.4, 0.38, 0.48, 0.44, 0.54];
+  _AreaChartPainter({required this.cur, required this.prev});
+
+  /// Виручка по кошиках періоду, нормована 0..1. Раніше обидві лінії були
+  /// зашиті константами й малювали один і той самий «красивий» графік.
+  final List<double> cur, prev;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -254,42 +255,45 @@ class _AreaChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AreaChartPainter oldDelegate) => false;
+  bool shouldRepaint(_AreaChartPainter old) =>
+      !listEquals(old.cur, cur) || !listEquals(old.prev, prev);
 }
 
 class _KpiGrid extends StatelessWidget {
-  const _KpiGrid();
+  const _KpiGrid({required this.d});
+  final AnalyticsData d;
+
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
+    // Прибутку поки не рахуємо: собівартості послуг у продукті немає, тож
+    // показувати «прибуток» замість виручки було б обманом.
     final tiles = <Widget>[
       _KpiTile(
-          label: t('Прибуток'),
-          value: '₴121 000',
-          delta: '12%',
-          up: true,
-          spark: const [0.3, 0.34, 0.32, 0.4, 0.44, 0.5, 0.58],
+          label: t('Виручка'),
+          value: Fmt.money(d.revenue),
+          delta: d.deltaPercent,
+          spark: d.series,
           color: k.success),
       _KpiTile(
           label: t('Сер. чек'),
-          value: '₴1 300',
-          delta: '6%',
-          up: true,
-          spark: const [0.2, 0.22, 0.21, 0.26, 0.25, 0.3, 0.33],
+          value: Fmt.money(d.avgCheck),
+          delta: d.avgCheckDelta,
+          spark: d.series,
           color: k.accent),
       _KpiTile(
           label: t('Записів'),
-          value: '140',
-          delta: '9%',
-          up: true,
-          spark: const [0.1, 0.14, 0.12, 0.18, 0.2, 0.22, 0.26],
+          value: '${d.visits}',
+          delta: d.visitsDelta,
+          spark: d.series,
           color: k.accent),
       _KpiTile(
           label: t('Скасувань'),
-          value: '4%',
-          delta: '2%',
-          up: false,
-          spark: const [0.4, 0.32, 0.34, 0.28, 0.24, 0.22, 0.18],
+          value: '${d.cancelPercent}%',
+          delta: d.cancelDelta == 0 ? null : d.cancelDelta,
+          // Менше скасувань — краще, тож стрілка рахується навпаки.
+          lowerIsBetter: true,
+          spark: d.prevSeries,
           color: k.danger),
     ];
     return Column(
@@ -315,13 +319,17 @@ class _KpiTile extends StatelessWidget {
       {required this.label,
       required this.value,
       required this.delta,
-      required this.up,
       required this.spark,
-      required this.color});
-  final String label, value, delta;
-  final bool up;
+      required this.color,
+      this.lowerIsBetter = false});
+  final String label, value;
+
+  /// null — попереднього періоду немає, порівнювати нема з чим. Показуємо
+  /// просто число, без вигаданої стрілки.
+  final int? delta;
   final List<double> spark;
   final Color color;
+  final bool lowerIsBetter;
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
@@ -333,9 +341,13 @@ class _KpiTile extends StatelessWidget {
           Row(
             children: [
               Expanded(child: ZLabel(label)),
-              ZPill('${up ? '▲' : '▼'} $delta',
-                  color: up ? k.success : k.danger,
-                  bg: up ? k.successTint : k.dangerTint),
+              if (delta != null)
+                Builder(builder: (context) {
+                  final good = lowerIsBetter ? delta! < 0 : delta! >= 0;
+                  return ZPill('${delta! >= 0 ? '▲' : '▼'} ${delta!.abs()}%',
+                      color: good ? k.success : k.danger,
+                      bg: good ? k.successTint : k.dangerTint);
+                }),
             ],
           ),
           const SizedBox(height: 4),
@@ -384,17 +396,13 @@ class _SparkPainter extends CustomPainter {
 }
 
 class _Heatmap extends StatelessWidget {
-  const _Heatmap();
-  static const rows = [
-    [0.2, 0.15, 0.18, 0.3, 0.5, 0.6, 0.1],
-    [0.5, 0.25, 0.3, 0.55, 0.8, 0.85, 0.15],
-    [0.7, 0.4, 0.45, 0.6, 0.9, 0.95, 0.2],
-    [0.65, 0.5, 0.55, 0.7, 0.95, 0.9, 0.25],
-    [0.4, 0.3, 0.35, 0.5, 0.75, 0.7, 0.12],
-  ];
+  const _Heatmap({required this.d});
+  final AnalyticsData d;
+
   static const hours = ['10', '12', '14', '16', '18'];
   static List<String> get days =>
       [t('Пн'), t('Вт'), t('Ср'), t('Чт'), t('Пт'), t('Сб'), t('Нд')];
+
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
@@ -409,10 +417,13 @@ class _Heatmap extends StatelessWidget {
               ZLabel(t('Завантаженість по днях')),
               Row(
                 children: [
-                  const ZRing(
-                      progress: 0.78, size: 30, stroke: 3.5, glow: false),
+                  ZRing(
+                      progress: d.loadPercent / 100,
+                      size: 30,
+                      stroke: 3.5,
+                      glow: false),
                   const SizedBox(width: 8),
-                  Text('78%',
+                  Text('${d.loadPercent}%',
                       style: AppTypography.tabular(AppTypography.title3(k.ink))
                           .copyWith(fontSize: 16, fontWeight: FontWeight.w800)),
                 ],
@@ -441,7 +452,7 @@ class _Heatmap extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
-                    for (final row in rows) ...[
+                    for (final row in d.heatmap) ...[
                       Row(
                         children: [
                           for (final v in row)
@@ -462,9 +473,9 @@ class _Heatmap extends StatelessWidget {
                     ],
                     Row(
                       children: [
-                        for (final d in days)
+                        for (final day in days)
                           Expanded(
-                            child: Text(d,
+                            child: Text(day,
                                 textAlign: TextAlign.center,
                                 style: AppTypography.label(k.ink3)
                                     .copyWith(fontSize: 10)),
@@ -483,13 +494,8 @@ class _Heatmap extends StatelessWidget {
 }
 
 class _TopServices extends StatelessWidget {
-  const _TopServices();
-  static List<(String, double, String)> get items => [
-        (t('Гель-лак'), 0.72, '₴54 000'),
-        (t('Манікюр'), 0.48, '₴38 000'),
-        (t('Педикюр'), 0.30, '₴27 000'),
-        (t('Нейл-арт'), 0.20, '₴18 000'),
-      ];
+  const _TopServices({required this.d});
+  final AnalyticsData d;
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
@@ -500,7 +506,10 @@ class _TopServices extends StatelessWidget {
         children: [
           ZLabel(t('Популярні послуги')),
           const SizedBox(height: 12),
-          for (final it in items) ...[
+          if (d.topServices.isEmpty)
+            Text(t('За цей період завершених візитів не було.'),
+                style: AppTypography.label(k.ink3).copyWith(fontSize: 12.5)),
+          for (final it in d.topServices) ...[
             Row(
               children: [
                 Expanded(
@@ -508,7 +517,7 @@ class _TopServices extends StatelessWidget {
                       style: AppTypography.label(k.ink)
                           .copyWith(fontSize: 13, fontWeight: FontWeight.w700)),
                 ),
-                Text(it.$3,
+                Text(Fmt.money(it.$2),
                     style: AppTypography.tabular(AppTypography.label(k.ink2))
                         .copyWith(fontSize: 12)),
               ],
@@ -517,7 +526,7 @@ class _TopServices extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: it.$2,
+                value: it.$3,
                 minHeight: 7,
                 backgroundColor: k.surface2,
                 valueColor: const AlwaysStoppedAnimation(Color(0xFF9595F5)),

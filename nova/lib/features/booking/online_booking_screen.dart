@@ -54,21 +54,11 @@ class OnlineBookingScreen extends ConsumerWidget {
 class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final k = context.kavio;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                  color: k.surface2, borderRadius: BorderRadius.circular(12)),
-              child: Icon(Icons.chevron_left, color: k.ink2),
-            ),
-          ),
+          ZBackButton(),
         ],
       ),
     );

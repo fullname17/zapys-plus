@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/routes.dart';
+import '../../core/industry/visit_fields.dart';
 import '../../core/localization/app_text.dart';
 import '../../core/services/analytics/analytics_events.dart';
 import '../../core/services/analytics/analytics_service.dart';
@@ -16,7 +17,10 @@ import '../../ui/status_pill.dart';
 import '../../ui/z.dart';
 import '../create/appointment_reminders.dart';
 import 'calendar_screen.dart' show apptColor;
+import 'deposit_sheet.dart';
 import 'edit_appointment_sheet.dart';
+import 'visit_details_sheet.dart';
+import 'visit_photos.dart';
 
 /// Картка запису v3 — усе про візит і всі дії над ним в одному листі.
 ///
@@ -132,7 +136,9 @@ class _AppointmentSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final k = context.kavio;
-    final a = appointment;
+    // Лист відкривають зі знімком запису; передоплата й нотатки міняються
+    // прямо тут, тож беремо найсвіжішу версію з бази, якщо вона є.
+    final a = ref.watch(appointmentByIdProvider(appointment.id)) ?? appointment;
     final c = apptColor(a.service.id);
     final cancelled = a.status == AppointmentStatus.cancelled;
     final done = a.status == AppointmentStatus.completed;
@@ -223,6 +229,20 @@ class _AppointmentSheet extends ConsumerWidget {
                   style: AppTypography.label(k.ink3).copyWith(fontSize: 12)),
             )),
           ],
+          const SizedBox(height: 10),
+
+          // Передоплата. Не платіж — позначка «гроші вже отримано»,
+          // якою майстри страхуються від неявок.
+          reveal(_DepositRow(appointment: a)),
+          const SizedBox(height: 10),
+
+          // Параметри роботи й нотатка — те, заради чого досі носять зошит.
+          reveal(_WorkRow(appointment: a)),
+          const SizedBox(height: 12),
+
+          reveal(ZLabel(t('Фото роботи'))),
+          const SizedBox(height: 8),
+          reveal(VisitPhotoStrip(appointment: a)),
           const SizedBox(height: 16),
 
           // Головна дія — залежить від того, де запис у своєму житті.
@@ -358,6 +378,156 @@ class _QuietAction extends StatelessWidget {
       child: Text(label,
           style: AppTypography.label(color)
               .copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// Рядок передоплати: скільки внесено і скільки лишилось доплатити.
+class _DepositRow extends StatelessWidget {
+  const _DepositRow({required this.appointment});
+  final Appointment appointment;
+
+  @override
+  Widget build(BuildContext context) {
+    final k = context.kavio;
+    final a = appointment;
+    final has = a.hasDeposit;
+    return Semantics(
+      button: true,
+      label: has
+          ? tp('Передоплата {sum}, лишилось {left}',
+              {'sum': Fmt.money(a.depositMinor), 'left': Fmt.money(a.dueMinor)})
+          : t('Позначити передоплату'),
+      child: GestureDetector(
+        onTap: () {
+          zTap();
+          Navigator.of(context).pop();
+          showDepositSheet(context, a);
+        },
+        child: ZCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: has ? k.successTint : k.surface2,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.savings_outlined,
+                    size: 17, color: has ? k.success : k.ink3),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t('Передоплата'),
+                        style: AppTypography.label(k.ink)
+                            .copyWith(fontSize: 13.5)),
+                    Text(
+                      has
+                          ? tp('лишилось доплатити {sum}',
+                              {'sum': Fmt.money(a.dueMinor)})
+                          : t('не внесена'),
+                      style:
+                          AppTypography.label(k.ink3).copyWith(fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                has ? Fmt.money(a.depositMinor) : '—',
+                style: AppTypography.tabular(
+                        AppTypography.label(has ? k.success : k.ink3))
+                    .copyWith(fontSize: 14, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 17, color: k.ink3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Рядок «Робота»: параметри й нотатка візиту.
+class _WorkRow extends ConsumerWidget {
+  const _WorkRow({required this.appointment});
+  final Appointment appointment;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final k = context.kavio;
+    final a = appointment;
+    final filled = a.params.isNotEmpty || (a.note?.isNotEmpty ?? false);
+    final summary = a.params.isNotEmpty
+        ? a.params.entries.map((e) => '${e.key}: ${e.value}').join(' · ')
+        : (a.note ?? '');
+
+    return Semantics(
+      button: true,
+      label: filled
+          ? tp('Робота: {text}', {'text': summary})
+          : t('Записати параметри роботи'),
+      child: GestureDetector(
+        onTap: () {
+          zTap();
+          Navigator.of(context).pop();
+          showVisitDetailsSheet(context, a);
+        },
+        child: ZCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: filled ? k.accentTint : k.surface2,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.edit_note,
+                    size: 18, color: filled ? k.accent : k.ink3),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t('Робота'),
+                        style: AppTypography.label(k.ink)
+                            .copyWith(fontSize: 13.5)),
+                    const SizedBox(height: 1),
+                    Text(
+                      // Підказка — поля саме цієї сфери: у майстра з вій це
+                      // вигин і товщина, у колориста — формула кольору.
+                      filled
+                          ? summary
+                          : [
+                              ...VisitFields.forIndustry(
+                                      ref.watch(industryProvider).value)
+                                  .take(3)
+                                  .map((f) => t(f.label).toLowerCase()),
+                              t('нотатка'),
+                            ].join(', '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.label(filled ? k.ink2 : k.ink3)
+                          .copyWith(fontSize: 11.5, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 17, color: k.ink3),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

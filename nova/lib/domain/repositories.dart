@@ -48,13 +48,35 @@ abstract interface class AppointmentsRepository {
   /// Перенос (Drag & Drop): меняет время начала.
   Future<void> move(String id, DateTime newStart);
   Future<void> delete(String id);
+
+  /// Позначити передоплату. Це не платіж: застосунок лише запам'ятовує суму,
+  /// яку майстер уже отримав.
+  Future<void> setDeposit(String id, int minor);
+
+  /// Нотатка й параметри роботи (вигин, товщина, формула кольору тощо).
+  Future<void> setDetails(String id, String? note, Map<String, String> params);
+}
+
+/// Фото робіт: галерея візиту й галерея клієнта.
+abstract interface class PhotosRepository {
+  Stream<List<VisitPhoto>> watchForAppointment(String appointmentId);
+  Stream<List<VisitPhoto>> watchForClient(String clientId);
+  Future<void> add(VisitPhoto photo);
+  Future<void> delete(String id);
+}
+
+/// Резервна копія: уся база одним знімком для збереження у файл.
+abstract interface class BackupRepository {
+  Future<Map<String, dynamic>> exportAll();
 }
 
 /// Настройка рабочего пространства (онбординг): применение отраслевого шаблона.
 abstract interface class WorkspaceRepository {
-  /// [services]: (категория, название, длительность_мин, цена_минор).
+  /// [services]: (категорія, назва, тривалість_хв, ціна_мінор, повтор_днів).
+  /// Повтор — через скільки днів послугу зазвичай роблять знову; null —
+  /// послуга разова.
   Future<void> applyIndustry(
     String industryId,
-    List<(String, String, int, int)> services,
+    List<(String, String, int, int, int?)> services,
   );
 }

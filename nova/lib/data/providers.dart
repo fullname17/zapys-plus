@@ -35,6 +35,34 @@ final workspaceRepositoryProvider = Provider<WorkspaceRepository>(
     (ref) => DriftWorkspaceRepository(ref.watch(databaseProvider)));
 final scheduleRepositoryProvider = Provider<ScheduleRepository>(
     (ref) => DriftScheduleRepository(ref.watch(databaseProvider)));
+final photosRepositoryProvider = Provider<PhotosRepository>(
+    (ref) => DriftPhotosRepository(ref.watch(databaseProvider)));
+final backupRepositoryProvider = Provider<BackupRepository>(
+    (ref) => DriftBackupRepository(ref.watch(databaseProvider)));
+
+/// Сфера майстра — від неї залежать поля параметрів візиту.
+final industryProvider = StreamProvider<String>(
+    (ref) => ref.watch(databaseProvider).watchIndustry());
+
+/// Фото одного візиту й уся галерея клієнта.
+final appointmentPhotosProvider =
+    StreamProvider.family<List<VisitPhoto>, String>((ref, id) =>
+        ref.watch(photosRepositoryProvider).watchForAppointment(id));
+
+final clientPhotosProvider = StreamProvider.family<List<VisitPhoto>, String>(
+    (ref, id) => ref.watch(photosRepositoryProvider).watchForClient(id));
+
+/// Найсвіжіша версія запису з поточного дня. Лист картки відкривають зі
+/// знімком об'єкта — після зміни передоплати чи нотатки він застаріває.
+final appointmentByIdProvider =
+    Provider.family<Appointment?, String>((ref, id) {
+  final list =
+      ref.watch(dayAppointmentsProvider).value ?? const <Appointment>[];
+  for (final a in list) {
+    if (a.id == id) return a;
+  }
+  return null;
+});
 
 /// Розклад майстра. Поки не завантажився — типовий тиждень, щоб екрани не
 /// чекали й не показували порожній календар.
@@ -480,4 +508,77 @@ final rebookSuggestionProvider =
   }
 
   return RebookSuggestion(appointment: base, cadenceDays: cadence, slot: best);
+});
+
+/// Кого пора кликати на повтор: остання послуга клієнта має свій ритм
+/// («корекція через 21 день»), і цей строк уже настав.
+///
+/// Це не те саме, що «Розумні вікна»: там ритм вгадується з історії людини,
+/// тут — прямо заданий майстром строк послуги. Клієнтів, у кого вже є
+/// майбутній запис, не турбуємо.
+@immutable
+class RepeatDue {
+  const RepeatDue({
+    required this.client,
+    required this.service,
+    required this.lastVisit,
+    required this.daysSince,
+    required this.repeatAfterDays,
+  });
+
+  final Client client;
+  final Service service;
+  final DateTime lastVisit;
+  final int daysSince;
+  final int repeatAfterDays;
+
+  /// Скільки днів прострочено. Від'ємне — строк ще попереду.
+  int get overdueDays => daysSince - repeatAfterDays;
+
+  /// Дата, коли варто повторити.
+  DateTime get dueDate => lastVisit.add(Duration(days: repeatAfterDays));
+
+  bool get isDue => overdueDays >= 0;
+}
+
+/// За скільки днів до строку клієнт уже потрапляє в список «скоро».
+const int kRepeatSoonDays = 5;
+
+final repeatDueProvider = Provider<List<RepeatDue>>((ref) {
+  final history = ref.watch(clientHistoryProvider);
+  final today = demoToday();
+  final now = demoNow();
+
+  // Хто вже записаний наперед — того кликати не треба.
+  final upcoming = ref
+          .watch(rangeAppointmentsProvider((
+            start: today,
+            end: today.add(const Duration(days: 90)),
+          )))
+          .value ??
+      const <Appointment>[];
+  final booked = {
+    for (final a in upcoming)
+      if (a.isActive && a.start.isAfter(now)) a.client.id,
+  };
+
+  final out = <RepeatDue>[];
+  for (final visits in history.values) {
+    if (visits.isEmpty) continue;
+    final last = visits.last;
+    if (booked.contains(last.client.id)) continue;
+    final every = last.service.repeatAfterDays;
+    if (every == null) continue;
+    final daysSince = now.difference(last.start).inDays;
+    if (daysSince < every - kRepeatSoonDays) continue;
+    out.add(RepeatDue(
+      client: last.client,
+      service: last.service,
+      lastVisit: last.start,
+      daysSince: daysSince,
+      repeatAfterDays: every,
+    ));
+  }
+  out.sort((a, b) => b.overdueDays.compareTo(a.overdueDays));
+  return out;
 });

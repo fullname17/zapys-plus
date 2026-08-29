@@ -71,6 +71,42 @@ class DriftAppointmentsRepository implements AppointmentsRepository {
 
   @override
   Future<void> delete(String id) => _db.deleteAppointment(id);
+
+  @override
+  Future<void> setDeposit(String id, int minor) =>
+      _db.setAppointmentDeposit(id, minor);
+
+  @override
+  Future<void> setDetails(
+          String id, String? note, Map<String, String> params) =>
+      _db.setAppointmentDetails(id, note, params);
+}
+
+class DriftPhotosRepository implements PhotosRepository {
+  DriftPhotosRepository(this._db);
+  final AppDatabase _db;
+
+  @override
+  Stream<List<VisitPhoto>> watchForAppointment(String appointmentId) =>
+      _db.watchAppointmentPhotos(appointmentId);
+
+  @override
+  Stream<List<VisitPhoto>> watchForClient(String clientId) =>
+      _db.watchClientPhotos(clientId);
+
+  @override
+  Future<void> add(VisitPhoto photo) => _db.addPhoto(photo);
+
+  @override
+  Future<void> delete(String id) => _db.deletePhoto(id);
+}
+
+class DriftBackupRepository implements BackupRepository {
+  DriftBackupRepository(this._db);
+  final AppDatabase _db;
+
+  @override
+  Future<Map<String, dynamic>> exportAll() => _db.exportAll();
 }
 
 class DriftScheduleRepository implements ScheduleRepository {
@@ -91,7 +127,7 @@ class DriftWorkspaceRepository implements WorkspaceRepository {
   @override
   Future<void> applyIndustry(
     String industryId,
-    List<(String, String, int, int)> services,
+    List<(String, String, int, int, int?)> services,
   ) =>
       _db.applyIndustryTemplate(industryId, services);
 }

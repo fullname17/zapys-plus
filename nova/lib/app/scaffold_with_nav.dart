@@ -104,34 +104,41 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final k = context.kavio;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: SizedBox(
-        width: 44,
-        height: 42,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(active ? destination.activeIcon : destination.icon,
-                size: 25, color: active ? k.accent : k.ink3),
-            const SizedBox(height: 5),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: active ? k.accent : Colors.transparent,
-                boxShadow: active
-                    ? const [BoxShadow(color: Color(0xBF8B8BF0), blurRadius: 8)]
-                    : null,
+    return Semantics(
+      button: true,
+      selected: active,
+      label: t(destination.label),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: SizedBox(
+          width: 44,
+          height: 42,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(active ? destination.activeIcon : destination.icon,
+                  size: 25, color: active ? k.accent : k.ink3),
+              const SizedBox(height: 5),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active ? k.accent : Colors.transparent,
+                  boxShadow: active
+                      ? const [
+                          BoxShadow(color: Color(0xBF8B8BF0), blurRadius: 8)
+                        ]
+                      : null,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -149,32 +156,36 @@ class _FabState extends State<_Fab> {
   bool _down = false;
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _down = true),
-      onTapUp: (_) => setState(() => _down = false),
-      onTapCancel: () => setState(() => _down = false),
-      onTap: () {
-        HapticFeedback.mediumImpact();
-        widget.onTap();
-      },
-      child: AnimatedScale(
-        scale: _down ? 0.92 : 1,
-        duration: const Duration(milliseconds: 110),
-        child: Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            gradient: FX.brandButton,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: const [
-              BoxShadow(
-                  color: Color(0xBF8B8BF0),
-                  blurRadius: 30,
-                  spreadRadius: -6,
-                  offset: Offset(0, 14))
-            ],
+    return Semantics(
+      button: true,
+      label: t('Створити'),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
+        onTap: () {
+          HapticFeedback.mediumImpact();
+          widget.onTap();
+        },
+        child: AnimatedScale(
+          scale: _down ? 0.92 : 1,
+          duration: const Duration(milliseconds: 110),
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: FX.brandButton,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0xBF8B8BF0),
+                    blurRadius: 30,
+                    spreadRadius: -6,
+                    offset: Offset(0, 14))
+              ],
+            ),
+            child: const Icon(Icons.add, color: Colors.white, size: 26),
           ),
-          child: const Icon(Icons.add, color: Colors.white, size: 26),
         ),
       ),
     );
@@ -316,47 +327,52 @@ class _MenuRow extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pop();
-                  action.onTap(context);
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 13),
-                      decoration: BoxDecoration(
-                        color: FX.glassFill,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: color.line, width: 1),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Color(0x99000000),
-                              blurRadius: 24,
-                              spreadRadius: -12,
-                              offset: Offset(0, 10))
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                                color: color.accentTint,
-                                borderRadius: BorderRadius.circular(11)),
-                            child: Icon(action.icon,
-                                size: 18, color: color.accent),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(action.label,
-                              style: AppTypography.title3(color.ink).copyWith(
-                                  fontSize: 15, fontWeight: FontWeight.w600)),
-                        ],
+              Semantics(
+                button: true,
+                label: action.label,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    action.onTap(context);
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 13),
+                        decoration: BoxDecoration(
+                          color: FX.glassFill,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: color.line, width: 1),
+                          boxShadow: const [
+                            BoxShadow(
+                                color: Color(0x99000000),
+                                blurRadius: 24,
+                                spreadRadius: -12,
+                                offset: Offset(0, 10))
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                  color: color.accentTint,
+                                  borderRadius: BorderRadius.circular(11)),
+                              child: Icon(action.icon,
+                                  size: 18, color: color.accent),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(action.label,
+                                style: AppTypography.title3(color.ink).copyWith(
+                                    fontSize: 15, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
